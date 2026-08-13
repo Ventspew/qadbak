@@ -4,6 +4,29 @@ import { useState } from "react";
 import type { AppInstallResult, AppTemplateSummary } from "@/lib/apps";
 import { Alert, Badge, Button, Card, Input, Label } from "@/components/ui";
 
+async function pollInstallJob(jobId: string): Promise<AppInstallResult> {
+  const started = Date.now();
+  const maxMs = 2_700_000;
+  while (Date.now() - started < maxMs) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const res = await fetch(`/api/admin/apps/install/job?id=${encodeURIComponent(jobId)}`);
+    const data = (await res.json()) as {
+      job?: { status: string; error?: string; result?: AppInstallResult };
+      error?: string;
+    };
+    if (!res.ok || data.error) {
+      throw new Error(data.error ?? `HTTP ${res.status}`);
+    }
+    if (data.job?.status === "ok" && data.job.result) return data.job.result;
+    if (data.job?.status === "error") {
+      throw new Error(data.job.error || "PoGo Stack install failed.");
+    }
+  }
+  throw new Error(
+    "Install is still running. Check Journal or /opt/qadbak/data/provisioning-helper.log",
+  );
+}
+
 export function AppInstallForm({ template }: { template: AppTemplateSummary }) {
   const [values, setValues] = useState<Record<string, string>>(() => {
     const out: Record<string, string> = {};
@@ -34,10 +57,17 @@ export function AppInstallForm({ template }: { template: AppTemplateSummary }) {
       });
       const data = (await res.json()) as {
         result?: AppInstallResult;
+        jobId?: string;
+        pending?: boolean;
         error?: string;
       };
       if (!res.ok || data.error) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      if (data.jobId) {
+        const result = await pollInstallJob(data.jobId);
+        setResult(result);
+        return;
       }
       if (data.result) setResult(data.result);
     } catch (e) {

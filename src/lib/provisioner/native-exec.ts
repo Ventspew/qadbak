@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { extractJournalSteps } from "@/lib/journal/helper-stream";
@@ -118,9 +119,23 @@ function formatHelperFailure(err: {
   if (err.message && !err.message.startsWith("Command failed:")) {
     return err.message;
   }
-  return `${err.message || "Provisioning helper failed"}${
-    err.code != null ? ` (code ${err.code})` : ""
-  }`;
+  const logTail = readHelperLogTail();
+  if (logTail) return `Install failed. Helper log:\n${logTail}`.slice(0, 2000);
+  return "PoGo Stack install failed before producing output. On the server run: tail -n 80 /opt/qadbak/data/provisioning-helper.log";
+}
+
+function readHelperLogTail(): string {
+  const file =
+    process.env.QADBAK_DIR
+      ? `${process.env.QADBAK_DIR}/data/provisioning-helper.log`
+      : "/opt/qadbak/data/provisioning-helper.log";
+  try {
+    const raw = readFileSync(file, "utf8").trim();
+    if (!raw) return "";
+    return raw.split("\n").slice(-20).join("\n");
+  } catch {
+    return "";
+  }
 }
 
 export async function runProvisioningHelper(

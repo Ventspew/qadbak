@@ -320,7 +320,7 @@
     "featured": true,
     "intentMode": "full",
     "installer": "pogo-stack-install",
-    "etaSeconds": 300
+    "etaSeconds": 1800
   },
   {
     "id": "mybb",

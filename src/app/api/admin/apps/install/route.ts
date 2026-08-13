@@ -5,6 +5,11 @@ import {
   AppValidationError,
   runAppInstall,
 } from "@/lib/apps";
+import { startBackgroundAppInstall } from "@/lib/apps/background-job";
+
+export const maxDuration = 3600;
+
+const BACKGROUND_TEMPLATES = new Set(["pogo-stack"]);
 
 /** POST /api/admin/apps/install { templateId, input } - orchestrated install. */
 export async function POST(request: Request) {
@@ -17,6 +22,14 @@ export async function POST(request: Request) {
     if (!body.templateId) return jsonError("templateId is required.", 400);
     if (!body.input || typeof body.input !== "object") {
       return jsonError("input object is required.", 400);
+    }
+    if (BACKGROUND_TEMPLATES.has(body.templateId)) {
+      const jobId = await startBackgroundAppInstall({
+        templateId: body.templateId,
+        rawInput: body.input,
+        session,
+      });
+      return jsonOk({ jobId, pending: true });
     }
     const result = await runAppInstall({
       templateId: body.templateId,
