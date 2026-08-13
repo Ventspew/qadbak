@@ -167,31 +167,41 @@ echo "koji      :${KOJI_PORT} → $(http_code "http://127.0.0.1:${KOJI_PORT}/")"
 echo "nginx HTTP  $HOST → $(http_code "http://127.0.0.1/" -H "Host: ${HOST}")"
 echo "nginx HTTP  $MAP_HOST → $(http_code "http://127.0.0.1/" -H "Host: ${MAP_HOST}")"
 echo "nginx HTTP  $KOJI_HOST → $(http_code "http://127.0.0.1/" -H "Host: ${KOJI_HOST}")"
-echo "nginx HTTPS $HOST → $(http_code "https://127.0.0.1/" -k --resolve "${HOST}:443:127.0.0.1")"
-echo "nginx HTTPS $MAP_HOST → $(http_code "https://127.0.0.1/" -k --resolve "${MAP_HOST}:443:127.0.0.1")"
-echo "nginx HTTPS $KOJI_HOST → $(http_code "https://127.0.0.1/" -k --resolve "${KOJI_HOST}:443:127.0.0.1")"
+# URL host must match --resolve host (SNI + Host), otherwise curl hits 127.0.0.1 literally.
+echo "nginx HTTPS $HOST → $(http_code "https://${HOST}/" -k --resolve "${HOST}:443:127.0.0.1")"
+echo "nginx HTTPS $MAP_HOST → $(http_code "https://${MAP_HOST}/" -k --resolve "${MAP_HOST}:443:127.0.0.1")"
+echo "nginx HTTPS $KOJI_HOST → $(http_code "https://${KOJI_HOST}/" -k --resolve "${KOJI_HOST}:443:127.0.0.1")"
 
-MAP_LOCAL="$(http_code "https://127.0.0.1/" -k --resolve "${MAP_HOST}:443:127.0.0.1")"
-KOJI_LOCAL="$(http_code "https://127.0.0.1/" -k --resolve "${KOJI_HOST}:443:127.0.0.1")"
+MAP_LOCAL="$(http_code "https://${MAP_HOST}/" -k --resolve "${MAP_HOST}:443:127.0.0.1")"
+KOJI_LOCAL="$(http_code "https://${KOJI_HOST}/" -k --resolve "${KOJI_HOST}:443:127.0.0.1")"
+POGO_LOCAL="$(http_code "https://${HOST}/" -k --resolve "${HOST}:443:127.0.0.1")"
 
 echo ""
 echo "==> Origin IP for Cloudflare A records: ${ORIGIN_IP:-UNKNOWN}"
-echo "Cloudflare DNS (edit each record → copy Content from pogo if unsure):"
+echo "Cloudflare DNS (edit each record → Content must be this IPv4):"
 echo "  A  pogo  → ${ORIGIN_IP:-<this VPS IPv4>}   (Proxied / orange)"
-echo "  A  map   → ${ORIGIN_IP:-<this VPS IPv4>}   (Proxied / orange)  ← MUST match pogo exactly"
+echo "  A  map   → ${ORIGIN_IP:-<this VPS IPv4>}   (Proxied / orange)"
 echo "  A  koji  → ${ORIGIN_IP:-<this VPS IPv4>}   (Proxied / orange)"
 echo "SSL/TLS encryption mode: Full  (not Flexible, not Full Strict)"
 echo ""
-if [[ "$MAP_LOCAL" != "200" && "$MAP_LOCAL" != "301" && "$MAP_LOCAL" != "302" ]]; then
-  echo "FAIL — origin HTTPS for $MAP_HOST is $MAP_LOCAL (expected 200). Nginx/cert still broken on this VPS." >&2
+
+ok_code() {
+  case "$1" in 200|301|302|304) return 0 ;; *) return 1 ;; esac
+}
+
+if ! ok_code "$MAP_LOCAL"; then
+  echo "FAIL — origin HTTPS for $MAP_HOST is $MAP_LOCAL (expected 200)." >&2
   ls -la "/etc/letsencrypt/live/${MAP_HOST}/" "/etc/qadbak/ssl/${MAP_HOST}/" 2>/dev/null || true
   exit 1
 fi
-if [[ "$KOJI_LOCAL" != "200" && "$KOJI_LOCAL" != "301" && "$KOJI_LOCAL" != "302" ]]; then
+if ! ok_code "$KOJI_LOCAL"; then
   echo "FAIL — origin HTTPS for $KOJI_HOST is $KOJI_LOCAL (expected 200)." >&2
   exit 1
 fi
+if ! ok_code "$POGO_LOCAL"; then
+  echo "WARN — origin HTTPS for $HOST is $POGO_LOCAL" >&2
+fi
 
-echo "Origin side OK. If browser still shows DNS_PROBE_POSSIBLE: flush local DNS / try 1.1.1.1."
-echo "If browser shows Cloudflare 522 on map only: map A-record Content is NOT ${ORIGIN_IP:-this VPS IP}."
+echo "Origin HTTPS OK (pogo=$POGO_LOCAL map=$MAP_LOCAL koji=$KOJI_LOCAL)."
+echo "Re-enable Cloudflare orange proxy on map if it is grey, then open https://${MAP_HOST}/"
 echo "OK — repaired ${HOST}, ${MAP_HOST}, ${KOJI_HOST}"
