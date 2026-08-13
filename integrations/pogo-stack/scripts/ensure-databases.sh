@@ -22,6 +22,14 @@ if [ ! -f "$SQL_FILE" ]; then
 fi
 
 echo "==> Ensuring golbat/reactmap/koji/poracle databases"
-docker compose exec -T mariadb \
-  mariadb -uroot -p"${DB_ROOT_PASSWORD}" < "$SQL_FILE"
+# Prefer MYSQL_PWD so the password is not visible on the process argv.
+if docker compose exec -T -e MYSQL_PWD="${DB_ROOT_PASSWORD}" mariadb \
+  mariadb -uroot < "$SQL_FILE"; then
+  echo "OK — mapping databases ready"
+  exit 0
+fi
+
+# Fallback for older images that only ship `mysql`.
+docker compose exec -T -e MYSQL_PWD="${DB_ROOT_PASSWORD}" mariadb \
+  mysql -uroot < "$SQL_FILE"
 echo "OK — mapping databases ready"

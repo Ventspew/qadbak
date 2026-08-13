@@ -64,7 +64,7 @@ services:
       - account-api
 
   koji:
-    image: ghcr.io/turtiesocks/koji:main
+    image: ${KOJI_IMAGE:-ghcr.io/turtiesocks/koji:main}
     networks: [pogo-net]
     restart: unless-stopped
     environment:
@@ -87,8 +87,6 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-      koji:
-        condition: service_started
     profiles: ["mapping", "full"]
 
   rotom:
@@ -103,17 +101,18 @@ services:
     profiles: ["mapping", "full"]
 
   reactmap:
-    image: ghcr.io/watwowmap/reactmap:main
+    image: ${REACTMAP_IMAGE:-ghcr.io/watwowmap/reactmap:v1.27.2}
     networks: [pogo-net]
     restart: unless-stopped
-    command: ["yarn", "start"]
+    # Official image Cmd is bare `node`; always start the app explicitly.
+    command: ["sh", "-c", "yarn start"]
+    environment:
+      NODE_ENV: production
     volumes:
       - ./config/rendered/reactmap.local.json:/home/node/server/src/configs/local.json:ro
     depends_on:
       mariadb:
         condition: service_healthy
-      golbat:
-        condition: service_started
     profiles: ["mapping", "full"]
 
   poracle:
