@@ -1,3 +1,28 @@
+export type AccountStats = {
+  total: number;
+  available: number;
+  in_use: number;
+  banned: number;
+  shadowbanned: number;
+  warning: number;
+};
+
+export type Account = {
+  id: number;
+  auth_service: string;
+  username: string;
+  level: number;
+  team: string;
+  in_use: boolean;
+  system_id: string | null;
+  banned: boolean;
+  shadowbanned: boolean;
+  warning: boolean;
+  captcha: boolean;
+  notes: string | null;
+  updated_at: string;
+};
+
 async function readError(res: Response): Promise<string> {
   const text = await res.text();
   try {
@@ -51,31 +76,6 @@ async function apiFetch(path: string, init?: RequestInit) {
   return res.json();
 }
 
-export type AccountStats = {
-  total: number;
-  available: number;
-  in_use: number;
-  banned: number;
-  shadowbanned: number;
-  warning: number;
-};
-
-export type Account = {
-  id: number;
-  auth_service: string;
-  username: string;
-  level: number;
-  team: string;
-  in_use: boolean;
-  system_id: string | null;
-  banned: boolean;
-  shadowbanned: boolean;
-  warning: boolean;
-  captcha: boolean;
-  notes: string | null;
-  updated_at: string;
-};
-
 export function fetchStats() {
   return apiFetch("/api/accounts/stats") as Promise<AccountStats>;
 }
@@ -109,10 +109,27 @@ export type ServiceLink = {
   description: string;
 };
 
+/** ReactMap/Koji need their own hostnames — path proxies cause white screens. */
+function mappingHosts() {
+  if (typeof window === "undefined") {
+    return { map: "/map/", koji: "/koji/" };
+  }
+  const host = window.location.hostname;
+  const parent = host.startsWith("pogo.") ? host.slice("pogo.".length) : host;
+  if (!parent || parent === host) {
+    return { map: "/map/", koji: "/koji/" };
+  }
+  return {
+    map: `${window.location.protocol}//map.${parent}/`,
+    koji: `${window.location.protocol}//koji.${parent}/`,
+  };
+}
+
 export function serviceLinks(): ServiceLink[] {
+  const hosts = mappingHosts();
   return [
-    { name: "ReactMap", url: "/map/", description: "Map frontend" },
-    { name: "Koji", url: "/koji/", description: "Geofence manager" },
+    { name: "ReactMap", url: hosts.map, description: "Map frontend" },
+    { name: "Koji", url: hosts.koji, description: "Geofence manager" },
     { name: "Account API docs", url: "/api/docs", description: "OpenAPI docs" },
   ];
 }

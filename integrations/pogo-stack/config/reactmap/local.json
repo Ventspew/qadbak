@@ -15,7 +15,7 @@
       "startZoom": 12,
       "minZoom": 3,
       "maxZoom": 18,
-      "geoJsonFileName": "http://koji:8080/api/v1/geofence/feature-collection/default"
+      "geoJsonFileName": "areas.json"
     }
   },
   "database": {

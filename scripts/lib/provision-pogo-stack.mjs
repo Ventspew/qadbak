@@ -181,9 +181,33 @@ async function ensureDashboardProxy(pogoHost, user) {
     envBody.match(/^DASHBOARD_PORT=(.*)$/m)?.[1]?.trim() ||
     process.env.POGO_DASHBOARD_PORT ||
     "18080";
+  const reactmapPort = envBody.match(/^REACTMAP_PORT=(.*)$/m)?.[1]?.trim() || "18081";
+  const kojiPort = envBody.match(/^KOJI_PORT=(.*)$/m)?.[1]?.trim() || "18082";
   await ensurePogoWebsiteConfig(pogoHost, user);
   await upsertProxy(pogoHost, "/", `http://127.0.0.1:${dashboardPort}/`, false);
   await reloadNginx(pogoHost, user, { ssl: true });
+
+  const parent = pogoHost.includes(".") ? pogoHost.split(".").slice(1).join(".") : "";
+  if (parent) {
+    const mapHost = `map.${parent}`;
+    const kojiHost = `koji.${parent}`;
+    try {
+      await ensurePogoSubdomain(parent, user, "map");
+      await ensurePogoWebsiteConfig(mapHost, user);
+      await upsertProxy(mapHost, "/", `http://127.0.0.1:${reactmapPort}/`, true);
+      await reloadNginx(mapHost, user, { ssl: true });
+    } catch (e) {
+      emit(`WARN: map proxy: ${execDetail(e).slice(0, 300)}`);
+    }
+    try {
+      await ensurePogoSubdomain(parent, user, "koji");
+      await ensurePogoWebsiteConfig(kojiHost, user);
+      await upsertProxy(kojiHost, "/", `http://127.0.0.1:${kojiPort}/`, true);
+      await reloadNginx(kojiHost, user, { ssl: true });
+    } catch (e) {
+      emit(`WARN: koji proxy: ${execDetail(e).slice(0, 300)}`);
+    }
+  }
   return dashboardPort;
 }
 
@@ -423,6 +447,8 @@ export async function pogoStackInstall(domain, payloadJson) {
   const originIp = process.env.QADBAK_ORIGIN_IP?.trim() || "";
   if (originIp) {
     await dnsAdd(parent, { name: subPrefix, type: "A", value: originIp }).catch(() => {});
+    await dnsAdd(parent, { name: "map", type: "A", value: originIp }).catch(() => {});
+    await dnsAdd(parent, { name: "koji", type: "A", value: originIp }).catch(() => {});
   }
 
   const adminUrl = `https://${pogoHost}/`;
@@ -446,8 +472,13 @@ export async function pogoStackInstall(domain, payloadJson) {
 }
 
 function buildPostInstall(mode, host, { arch, arm, warnings } = {}) {
+  const parent = host.includes(".") ? host.split(".").slice(1).join(".") : host;
   const lines = [
     `Dashboard: https://${host}/`,
+    `ReactMap: https://map.${parent}/`,
+    `Koji: https://koji.${parent}/`,
+    `Add Cloudflare A records for map + koji → same origin IP as pogo (SSL Full).`,
+  ];
     "Add Pokémon GO accounts in the dashboard or via Account API.",
   ];
   if (mode === "full" || mode === "workers") {

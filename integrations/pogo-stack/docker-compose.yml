@@ -56,8 +56,10 @@ services:
     restart: unless-stopped
     environment:
       ACCOUNT_API_KEY: ${ACCOUNT_API_KEY}
-      # Only substitute the API key — leave nginx $host/$uri vars alone.
-      NGINX_ENVSUBST_FILTER: ACCOUNT_API_KEY
+      MAP_PUBLIC_URL: ${MAP_PUBLIC_URL:-https://map.inveil.net/}
+      KOJI_PUBLIC_URL: ${KOJI_PUBLIC_URL:-https://koji.inveil.net/}
+      # Only substitute listed vars — leave nginx $host/$uri alone.
+      NGINX_ENVSUBST_FILTER: ACCOUNT_API_KEY|MAP_PUBLIC_URL|KOJI_PUBLIC_URL
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-18080}:8080"
     depends_on:
@@ -71,7 +73,11 @@ services:
       SCANNER_DB_URL: mysql://${DB_USER}:${DB_PASSWORD}@mariadb:3306/golbat
       KOJI_DB_URL: mysql://${DB_USER}:${DB_PASSWORD}@mariadb:3306/koji
       KOJI_SECRET: ${KOJI_BEARER_TOKEN}
+      HOST: 0.0.0.0
+      PORT: "8080"
       LOG_LEVEL: info
+    ports:
+      - "127.0.0.1:${KOJI_PORT:-18082}:8080"
     depends_on:
       mariadb:
         condition: service_healthy
@@ -104,12 +110,15 @@ services:
     image: ${REACTMAP_IMAGE:-ghcr.io/watwowmap/reactmap:v1.27.2}
     networks: [pogo-net]
     restart: unless-stopped
-    # Official image Cmd is bare `node`; always start the app explicitly.
-    command: ["sh", "-c", "yarn start"]
+    # Image default Cmd is bare `node`; start the server entrypoint.
+    command: ["sh", "-c", "node server/src/index.js"]
     environment:
       NODE_ENV: production
     volumes:
       - ./config/rendered/reactmap.local.json:/home/node/server/src/configs/local.json:ro
+      - ./config/reactmap/areas.json:/home/node/server/src/configs/areas.json:ro
+    ports:
+      - "127.0.0.1:${REACTMAP_PORT:-18081}:8080"
     depends_on:
       mariadb:
         condition: service_healthy
