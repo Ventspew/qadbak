@@ -47,6 +47,20 @@ if [[ -f "$POGO_DIR/.env" ]]; then
   KOJI_PORT="${KOJI_PORT:-18082}"
 fi
 
+detect_origin_ip() {
+  local ip=""
+  if [[ -f "$POGO_DIR/.env" ]]; then
+    ip="$(grep -E '^SERVER_PUBLIC_IP=' "$POGO_DIR/.env" | tail -1 | cut -d= -f2- | tr -d '\"' || true)"
+  fi
+  if [[ -z "$ip" || "$ip" == "127.0.0.1" ]]; then
+    ip="$(curl -4 -fsS --max-time 5 https://ifconfig.me/ip 2>/dev/null \
+      || curl -4 -fsS --max-time 5 https://icanhazip.com 2>/dev/null \
+      || true)"
+    ip="$(echo "$ip" | tr -d '[:space:]')"
+  fi
+  echo "$ip"
+}
+
 write_proxy_vhost() {
   local name="$1"
   local dest="$2"
@@ -100,6 +114,12 @@ PY
   bash "$QADBAK_DIR/scripts/apply-domain-nginx.sh" "$name" "$USER" --ssl || true
 }
 
+http_code() {
+  # usage: http_code URL [curl args...]
+  local url="$1"; shift
+  curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 15 "$@" "$url" 2>/dev/null || echo "000"
+}
+
 echo "==> PoGo proxy repair"
 echo "    dashboard $HOST → http://127.0.0.1:${PORT}/"
 echo "    reactmap  $MAP_HOST → http://127.0.0.1:${REACTMAP_PORT}/"
@@ -138,21 +158,40 @@ for i in $(seq 1 20); do
   sleep 1
 done
 
-echo "==> Local checks"
-curl -sS -o /dev/null -w "dashboard :${PORT} → %{http_code}\n" "http://127.0.0.1:${PORT}/" || true
-curl -sS -o /dev/null -w "reactmap :${REACTMAP_PORT} → %{http_code}\n" "http://127.0.0.1:${REACTMAP_PORT}/" || true
-curl -sS -o /dev/null -w "koji :${KOJI_PORT} → %{http_code}\n" "http://127.0.0.1:${KOJI_PORT}/" || true
-curl -sS -o /dev/null -w "origin HTTP $HOST / → %{http_code}\n" -H "Host: ${HOST}" "http://127.0.0.1/" || true
+ORIGIN_IP="$(detect_origin_ip)"
 
-if [[ -f "/etc/letsencrypt/live/${HOST}/fullchain.pem" ]]; then
-  echo "TLS cert present for ${HOST}"
-else
-  echo "WARN: no Let's Encrypt cert for ${HOST}"
-fi
+echo "==> Local checks (containers + nginx Host headers)"
+echo "dashboard :${PORT} → $(http_code "http://127.0.0.1:${PORT}/")"
+echo "reactmap  :${REACTMAP_PORT} → $(http_code "http://127.0.0.1:${REACTMAP_PORT}/")"
+echo "koji      :${KOJI_PORT} → $(http_code "http://127.0.0.1:${KOJI_PORT}/")"
+echo "nginx HTTP  $HOST → $(http_code "http://127.0.0.1/" -H "Host: ${HOST}")"
+echo "nginx HTTP  $MAP_HOST → $(http_code "http://127.0.0.1/" -H "Host: ${MAP_HOST}")"
+echo "nginx HTTP  $KOJI_HOST → $(http_code "http://127.0.0.1/" -H "Host: ${KOJI_HOST}")"
+echo "nginx HTTPS $HOST → $(http_code "https://127.0.0.1/" -k --resolve "${HOST}:443:127.0.0.1")"
+echo "nginx HTTPS $MAP_HOST → $(http_code "https://127.0.0.1/" -k --resolve "${MAP_HOST}:443:127.0.0.1")"
+echo "nginx HTTPS $KOJI_HOST → $(http_code "https://127.0.0.1/" -k --resolve "${KOJI_HOST}:443:127.0.0.1")"
+
+MAP_LOCAL="$(http_code "https://127.0.0.1/" -k --resolve "${MAP_HOST}:443:127.0.0.1")"
+KOJI_LOCAL="$(http_code "https://127.0.0.1/" -k --resolve "${KOJI_HOST}:443:127.0.0.1")"
 
 echo ""
-echo "Cloudflare DNS (orange cloud OK once certs exist; SSL mode Full):"
-echo "  A  pogo  → origin IP"
-echo "  A  map   → origin IP"
-echo "  A  koji  → origin IP"
+echo "==> Origin IP for Cloudflare A records: ${ORIGIN_IP:-UNKNOWN}"
+echo "Cloudflare DNS (edit each record → copy Content from pogo if unsure):"
+echo "  A  pogo  → ${ORIGIN_IP:-<this VPS IPv4>}   (Proxied / orange)"
+echo "  A  map   → ${ORIGIN_IP:-<this VPS IPv4>}   (Proxied / orange)  ← MUST match pogo exactly"
+echo "  A  koji  → ${ORIGIN_IP:-<this VPS IPv4>}   (Proxied / orange)"
+echo "SSL/TLS encryption mode: Full  (not Flexible, not Full Strict)"
+echo ""
+if [[ "$MAP_LOCAL" != "200" && "$MAP_LOCAL" != "301" && "$MAP_LOCAL" != "302" ]]; then
+  echo "FAIL — origin HTTPS for $MAP_HOST is $MAP_LOCAL (expected 200). Nginx/cert still broken on this VPS." >&2
+  ls -la "/etc/letsencrypt/live/${MAP_HOST}/" "/etc/qadbak/ssl/${MAP_HOST}/" 2>/dev/null || true
+  exit 1
+fi
+if [[ "$KOJI_LOCAL" != "200" && "$KOJI_LOCAL" != "301" && "$KOJI_LOCAL" != "302" ]]; then
+  echo "FAIL — origin HTTPS for $KOJI_HOST is $KOJI_LOCAL (expected 200)." >&2
+  exit 1
+fi
+
+echo "Origin side OK. If browser still shows DNS_PROBE_POSSIBLE: flush local DNS / try 1.1.1.1."
+echo "If browser shows Cloudflare 522 on map only: map A-record Content is NOT ${ORIGIN_IP:-this VPS IP}."
 echo "OK — repaired ${HOST}, ${MAP_HOST}, ${KOJI_HOST}"
