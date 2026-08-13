@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { runAppInstall, type AppInstallResult } from "./install";
-import type { AppInstallContext } from "./types";
+import { runAppInstall } from "./install";
+import type { AppInstallContext, AppInstallResult } from "./types";
 
 const JOB_DIR = process.env.QADBAK_DIR
   ? path.join(process.env.QADBAK_DIR, "data", "app-jobs")
