@@ -51,6 +51,10 @@ write_proxy_vhost() {
   local name="$1"
   local dest="$2"
   local ws="${3:-false}"
+  local ws_py=False
+  case "$ws" in
+    true|TRUE|1|yes|YES) ws_py=True ;;
+  esac
   echo "==> Proxy ${name} → ${dest}"
   mkdir -p "$QADBAK_DIR/data/domain-config/$name"
   python3 - <<PY
@@ -66,7 +70,7 @@ cfg.mkdir(parents=True, exist_ok=True)
   "path": "/",
   "dest": "$dest",
   "type": "proxy",
-  "websocket": $ws,
+  "websocket": $ws_py,
 }], indent=2)+"\n")
 print("wrote", cfg)
 PY
