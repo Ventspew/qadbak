@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFile, access, writeFile, mkdir } from "node:fs/promises";
+import { writeSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
@@ -7,7 +8,12 @@ export const QADBAK_DIR = process.env.QADBAK_DIR || "/opt/qadbak";
 const REGISTRY = path.join(QADBAK_DIR, "data", "native-domains.json");
 
 export function emit(obj) {
-  process.stdout.write(`${JSON.stringify(obj)}\n`);
+  const line = `${JSON.stringify(obj)}\n`;
+  try {
+    writeSync(1, line);
+  } catch {
+    process.stdout.write(line);
+  }
 }
 
 export function fail(message, code = 1) {

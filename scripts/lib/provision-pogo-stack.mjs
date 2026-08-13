@@ -1,4 +1,5 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { createWriteStream } from "node:fs";
 import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { promisify } from "node:util";
@@ -204,46 +205,85 @@ async function ensureEnv(mode) {
   emit(`PoGo stack mode: ${mode}`);
 }
 
-function composeProfiles(mode) {
-  if (mode === "core") return [];
-  if (mode === "mapping") return ["mapping"];
-  if (mode === "workers" || mode === "full") return ["mapping", "workers"];
-  return ["mapping", "workers"];
+const CORE_SERVICES = ["mariadb", "redis", "account-api", "dashboard"];
+const MAPPING_SERVICES = ["golbat", "rotom", "reactmap", "poracle", "dragonite", "koji"];
+const WORKER_SERVICES = ["redroid-1", "redroid-2", "worker-agent", "houndour"];
+
+function composeLogPath() {
+  return path.join(POGO_DIR, "compose-install.log");
 }
 
-async function runComposeWithProfiles(profiles, action = "up") {
-  const runner = await resolveComposeRunner();
-  const args = [...runner.prefix];
-  for (const p of profiles) {
-    args.push("--profile", p);
-  }
-  if (action === "up") {
-    args.push("up", "-d", "--build");
-  } else if (action === "pull") {
-    args.push("pull");
-  } else {
-    fail(`Unknown compose action: ${action}`);
-  }
-  const label = `docker compose ${action}${profiles.length ? ` (${profiles.join("+")})` : " (core)"}`;
-  await runStep(label, async () => {
-    await exec(runner.cmd, args, { cwd: POGO_DIR, timeout: 1_800_000 });
+function spawnCompose(cmd, args, timeoutMs = 1_800_000) {
+  return new Promise((resolve, reject) => {
+    const log = createWriteStream(composeLogPath(), { flags: "a" });
+    log.write(`\n==> ${cmd} ${args.join(" ")}\n`);
+    const child = spawn(cmd, args, {
+      cwd: POGO_DIR,
+      env: process.env,
+    });
+    let tail = "";
+    const onData = (buf) => {
+      const text = buf.toString();
+      tail = `${tail}${text}`.slice(-12_000);
+      log.write(text);
+    };
+    child.stdout.on("data", onData);
+    child.stderr.on("data", onData);
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`timed out after ${Math.round(timeoutMs / 60000)}m. Last output:\n${tail}`));
+    }, timeoutMs);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      log.end();
+      reject(err);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      log.end();
+      if (code === 0) resolve(tail);
+      else reject(new Error(`exit ${code}. Last output:\n${tail}`));
+    });
   });
 }
 
-async function runCompose(mode, action = "up") {
-  const profiles = composeProfiles(mode);
-  if (action === "pull") {
-    await runComposeWithProfiles(profiles, "pull");
-    return;
+async function composeUp(services, profiles = []) {
+  const runner = await resolveComposeRunner();
+  const args = [...runner.prefix];
+  for (const p of profiles) args.push("--profile", p);
+  args.push("up", "-d", "--build", ...services);
+  const label = services.join(", ");
+  emit(`Starting ${label}`);
+  await spawnCompose(runner.cmd, args);
+}
+
+async function startStack(mode) {
+  const warnings = [];
+  await runStep("Start core stack (MariaDB, Redis, API, dashboard)", async () => {
+    await composeUp(CORE_SERVICES);
+  });
+  if (mode === "core") return warnings;
+
+  for (const svc of MAPPING_SERVICES) {
+    try {
+      await composeUp([svc], ["mapping"]);
+    } catch (e) {
+      const detail = execDetail(e).slice(0, 500);
+      warnings.push(`${svc}: ${detail}`);
+      emit(`WARN: mapping service ${svc} failed — continuing. ${detail}`);
+    }
   }
-  if (mode === "core") {
-    await runComposeWithProfiles([], "up");
-    return;
-  }
-  await runComposeWithProfiles(["mapping"], "up");
+
   if (mode === "full" || mode === "workers") {
-    await runComposeWithProfiles(["workers"], "up");
+    try {
+      await composeUp(WORKER_SERVICES, ["workers"]);
+    } catch (e) {
+      const detail = execDetail(e).slice(0, 800);
+      warnings.push(`workers: ${detail}`);
+      emit(`WARN: Redroid workers failed — core/mapping stay up. ${detail}`);
+    }
   }
+  return warnings;
 }
 
 async function renderConfig() {
@@ -302,8 +342,7 @@ export async function pogoStackInstall(domain, payloadJson) {
   await ensureEnv(mode);
   const { arch, arm } = await applyRedroidArchEnv();
   await renderConfig();
-  await runCompose(mode, "pull").catch(() => {});
-  await runCompose(mode, "up");
+  const warnings = await startStack(mode);
 
   const dashboardPort = process.env.POGO_DASHBOARD_PORT || "8080";
   await runStep("Configure reverse proxy", async () => {
@@ -318,7 +357,7 @@ export async function pogoStackInstall(domain, payloadJson) {
   await sslIssue(pogoHost, pogoHost).catch(() => {});
 
   const adminUrl = `https://${pogoHost}/`;
-  const postInstall = buildPostInstall(mode, pogoHost, { arch, arm });
+  const postInstall = buildPostInstall(mode, pogoHost, { arch, arm, warnings });
   const state = {
     installedAt: new Date().toISOString(),
     domain: parent,
@@ -327,16 +366,17 @@ export async function pogoStackInstall(domain, payloadJson) {
     arch,
     dashboardPort,
     stackDir: POGO_DIR,
+    warnings,
     postInstall,
   };
   await writeState(state);
 
-  const result = { adminUrl, pogoHost, mode, postInstall };
+  const result = { adminUrl, pogoHost, mode, postInstall, warnings };
   emit({ ok: true, ...result });
   return result;
 }
 
-function buildPostInstall(mode, host, { arch, arm } = {}) {
+function buildPostInstall(mode, host, { arch, arm, warnings } = {}) {
   const lines = [
     `Dashboard: https://${host}/`,
     "Add Pokémon GO accounts in the dashboard or via Account API.",
@@ -355,6 +395,9 @@ function buildPostInstall(mode, host, { arch, arm } = {}) {
   }
   if (mode !== "core") {
     lines.push("Run scripts/install-dragonite.sh for the Dragonite binary (closed source).");
+  }
+  if (warnings?.length) {
+    lines.push(`Some services had warnings (see ${composeLogPath()}): ${warnings.length} skipped.`);
   }
   return lines;
 }
@@ -390,8 +433,7 @@ export async function pogoStackUpdate() {
   }
   await applyRedroidArchEnv();
   await renderConfig();
-  await runCompose(state.mode || "full", "pull").catch(() => {});
-  await runCompose(state.mode || "full", "up");
+  await startStack(state.mode || "full");
   state.updatedAt = new Date().toISOString();
   await writeState(state);
   const result = { updated: true, mode: state.mode };

@@ -82,14 +82,56 @@ function rememberSteps(stdout: string): void {
   }
 }
 
+function helperTimeoutMs(command: string): number {
+  if (command.startsWith("pogo-stack-") || command === "jellyfin-install") {
+    return 2_700_000;
+  }
+  return 600_000;
+}
+
+function formatHelperFailure(err: {
+  stdout?: string;
+  stderr?: string;
+  message?: string;
+  killed?: boolean;
+  signal?: NodeJS.Signals | null;
+  code?: string | number | null;
+}): string {
+  const parsed = err.stdout ? parseHelperStdout(err.stdout) : null;
+  if (parsed?.ok === false && parsed.error) return String(parsed.error);
+  const stderr = err.stderr?.trim() ?? "";
+  const stdoutTail =
+    err.stdout
+      ?.trim()
+      .split("\n")
+      .filter((line) => !line.includes('"journal-step"'))
+      .slice(-12)
+      .join("\n")
+      .trim() ?? "";
+  if (err.killed || err.signal === "SIGTERM") {
+    return `PoGo/provisioning helper timed out. Last output: ${
+      stderr || stdoutTail || "no output (docker build may still be running)"
+    }`.slice(0, 2000);
+  }
+  if (stderr) return stderr.slice(0, 2000);
+  if (stdoutTail) return stdoutTail.slice(0, 2000);
+  if (err.message && !err.message.startsWith("Command failed:")) {
+    return err.message;
+  }
+  return `${err.message || "Provisioning helper failed"}${
+    err.code != null ? ` (code ${err.code})` : ""
+  }`;
+}
+
 export async function runProvisioningHelper(
   ...args: string[]
 ): Promise<HelperResult> {
+  const timeout = helperTimeoutMs(args[0] ?? "");
   try {
     const { stdout } = await execFileAsync(
       "sudo",
       ["-n", PROVISIONING_HELPER_WRAPPER, ...args],
-      { timeout: 600_000, maxBuffer: 8 * 1024 * 1024 },
+      { timeout, maxBuffer: 32 * 1024 * 1024 },
     );
     rememberSteps(stdout);
     const parsed = parseHelperStdout(stdout);
@@ -103,26 +145,15 @@ export async function runProvisioningHelper(
     }
     return parsed;
   } catch (e) {
-    const err = e as { stdout?: string; stderr?: string; message?: string };
-    if (err.stdout) {
-      rememberSteps(err.stdout);
-      const parsed = parseHelperStdout(err.stdout);
-      if (parsed?.ok === false) {
-        throw new Error(parsed.error ?? "Provisioning helper failed");
-      }
-    }
-    const stderr = err.stderr?.trim() ?? "";
-    const stdoutTail = err.stdout?.trim().split("\n").slice(-8).join("\n").trim() ?? "";
-    if (stderr) {
-      throw new Error(stderr.slice(0, 2000));
-    }
-    if (stdoutTail && err.message?.startsWith("Command failed:")) {
-      throw new Error(stdoutTail.slice(0, 2000));
-    }
-    if (err.message && !err.message.startsWith("Command failed:")) {
-      throw e instanceof Error ? e : new Error(String(e));
-    }
-    const detail = err.message || "Provisioning helper failed";
-    throw new Error(detail);
+    const err = e as {
+      stdout?: string;
+      stderr?: string;
+      message?: string;
+      killed?: boolean;
+      signal?: NodeJS.Signals | null;
+      code?: string | number | null;
+    };
+    if (err.stdout) rememberSteps(err.stdout);
+    throw new Error(formatHelperFailure(err));
   }
 }

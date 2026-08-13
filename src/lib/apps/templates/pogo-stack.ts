@@ -9,7 +9,7 @@ export const pogoStackTemplate: AppTemplate = {
   description:
     "Installs the bundled PoGo Stack on this VPS: account API, dashboard, Golbat, ReactMap, " +
     "RotomNG, and optional Redroid/Cosmog deviceless workers. Proxied at pogo.yourdomain.com.",
-  etaSeconds: 300,
+  etaSeconds: 1800,
   inputs: [
     {
       name: "domain",
