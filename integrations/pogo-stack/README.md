@@ -49,7 +49,7 @@ Qadbak VPS (ARM64 recommended)
 - 16 GB+ RAM for 2 Redroid containers
 - Cosmog license + APK (see `services/cosmog/apk/README.md`)
 
-x86 Qadbak VPS: core + mapping work; workers need ARM64.
+x86 Contabo: see [DEVICELESS-X86.md](docs/DEVICELESS-X86.md) — hard-try Redroid + Cosmog on one box (no forking PoGo).
 
 ## Scripts
 

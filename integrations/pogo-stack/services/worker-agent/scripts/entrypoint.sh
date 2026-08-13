@@ -46,10 +46,19 @@ install_apks_once() {
     [ -z "$host" ] && continue
     echo "Installing APKs on $host ..."
     adb -s "$host" wait-for-device
-    adb -s "$host" install -r "$cosmog" || true
-    if [ -f "$pogo" ]; then
-      adb -s "$host" install -r "$pogo" || true
+    echo "Device ABI: $(adb -s "$host" shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r')"
+    echo "Supported ABIs: $(adb -s "$host" shell getprop ro.product.cpu.abilist 2>/dev/null | tr -d '\r')"
+    if ! adb -s "$host" install -r "$cosmog"; then
+      echo "ERROR: cosmog.apk install failed on $host (often ABI mismatch on x86 Redroid)."
     fi
+    if [ -f "$pogo" ]; then
+      if ! adb -s "$host" install -r "$pogo"; then
+        echo "ERROR: pogo.apk install failed on $host (need Cosmog-matching arm64 build + translation)."
+      fi
+    else
+      echo "WARN: pogo.apk missing — Cosmog needs Pokémon GO installed."
+    fi
+    adb -s "$host" shell pm list packages 2>/dev/null | grep -Ei 'cosmog|pokemon|niantic' || true
   done
   touch "$marker"
 }
