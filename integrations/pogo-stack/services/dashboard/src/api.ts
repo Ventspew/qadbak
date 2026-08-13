@@ -42,19 +42,26 @@ async function readError(res: Response): Promise<string> {
 }
 
 async function apiFetch(path: string, init?: RequestInit) {
+  const method = (init?.method || "GET").toUpperCase();
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  if (method !== "GET" && method !== "HEAD") {
+    headers["Content-Type"] = "application/json";
+  }
+
   let res: Response;
   try {
     res = await fetch(path, {
       ...init,
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
+      method,
+      headers,
+      credentials: "same-origin",
     });
   } catch {
     throw new Error(
-      "Could not reach Account API (failed to fetch). Check that account-api is up and /api/accounts is proxied.",
+      "Could not reach Account API (failed to fetch). On the server run: curl -sS http://127.0.0.1:18080/api/health && sudo bash /opt/qadbak/scripts/lib/repair-pogo-proxy.sh",
     );
   }
   if (!res.ok) {

@@ -55,7 +55,7 @@ cfg.mkdir(parents=True, exist_ok=True)
   "path": "/",
   "dest": "http://127.0.0.1:${PORT}/",
   "type": "proxy",
-  "websocket": True,
+  "websocket": False,
 }], indent=2)+"\n")
 print("wrote website.json + proxies.json")
 PY

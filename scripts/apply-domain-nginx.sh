@@ -13,6 +13,17 @@ APACHE_BACKEND="${APACHE_BACKEND:-127.0.0.1:8080}"
 REDIR_JSON="$QADBAK_DIR/data/domain-config/${DOMAIN}/redirects.json"
 PROXY_JSON="$QADBAK_DIR/data/domain-config/${DOMAIN}/proxies.json"
 
+# Needed for websocket proxies: Connection: upgrade only when client sends Upgrade.
+WS_MAP="/etc/nginx/conf.d/00-qadbak-websocket-map.conf"
+if [[ ! -f "$WS_MAP" ]]; then
+  cat >"$WS_MAP" <<'EOF'
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+EOF
+fi
+
 ISSUE_SSL_RESOLVED="${ISSUE_SSL:-${QADBAK_AUTO_SSL:-}}"
 case "$SSL_FLAG" in
   --ssl)    ISSUE_SSL_RESOLVED=1 ;;
@@ -108,8 +119,10 @@ write_common_locations() {
       echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
       echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
       if [[ "$pws" == "true" ]]; then
+        # Only upgrade when the client asks — never force Connection: upgrade on
+        # every request (breaks fetch/XHR to the same location).
         echo "        proxy_set_header Upgrade \$http_upgrade;"
-        echo "        proxy_set_header Connection \"upgrade\";"
+        echo "        proxy_set_header Connection \$connection_upgrade;"
       fi
       echo "    }"
     done < <(jq -r 'unique_by(.path) | .[] | [.path,.dest,(.websocket // false)] | @tsv' "$PROXY_JSON" 2>/dev/null)

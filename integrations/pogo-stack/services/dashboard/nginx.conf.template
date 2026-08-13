@@ -1,9 +1,7 @@
-# Core account-api is always on the compose network.
 upstream account_api {
     server account-api:4242;
 }
 
-# Optional map services — Docker DNS at request time.
 resolver 127.0.0.11 valid=10s ipv6=off;
 
 server {
@@ -12,34 +10,49 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    # Filled by nginx image envsubst from ACCOUNT_API_KEY at container start.
     set $pogo_api_key "${ACCOUNT_API_KEY}";
 
     location = /api/health {
         proxy_pass http://account_api/health;
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
+        proxy_set_header Connection "";
     }
 
     location = /api/docs {
         proxy_pass http://account_api/docs;
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
+        proxy_set_header Connection "";
     }
 
     location = /api/openapi.json {
         proxy_pass http://account_api/openapi.json;
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
+        proxy_set_header Connection "";
     }
 
-    location ^~ /api/accounts {
-        rewrite ^/api/accounts/?$ /account break;
-        rewrite ^/api/accounts/(.*)$ /account/$1 break;
-        proxy_pass http://account_api;
+    location = /api/accounts {
+        proxy_pass http://account_api/account;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-API-Key $pogo_api_key;
+        proxy_set_header Connection "";
+    }
+
+    location /api/accounts/ {
+        proxy_pass http://account_api/account/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-API-Key $pogo_api_key;
+        proxy_set_header Connection "";
     }
 
     location /map/ {
@@ -48,13 +61,14 @@ server {
         proxy_set_header Host $host;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
     }
 
     location /koji/ {
         set $koji_upstream koji:8080;
         proxy_pass http://$koji_upstream/;
         proxy_set_header Host $host;
+        proxy_set_header Connection "";
     }
 
     location / {

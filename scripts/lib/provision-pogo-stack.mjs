@@ -182,7 +182,7 @@ async function ensureDashboardProxy(pogoHost, user) {
     process.env.POGO_DASHBOARD_PORT ||
     "18080";
   await ensurePogoWebsiteConfig(pogoHost, user);
-  await upsertProxy(pogoHost, "/", `http://127.0.0.1:${dashboardPort}/`, true);
+  await upsertProxy(pogoHost, "/", `http://127.0.0.1:${dashboardPort}/`, false);
   await reloadNginx(pogoHost, user, { ssl: true });
   return dashboardPort;
 }
