@@ -231,7 +231,9 @@ if [[ "${NGINX_BATCH:-}" != "1" ]]; then
   nginx -t
   systemctl reload nginx
 fi
-if [[ "$SITE_MODE" == "static" ]]; then
+if [[ "${HAS_ROOT_PROXY:-0}" == "1" ]]; then
+  echo "OK — nginx vhost ${DOMAIN} (reverse proxy root${SSL_CERT_HOST:+, HTTPS})"
+elif [[ "$SITE_MODE" == "static" ]]; then
   echo "OK — nginx vhost ${DOMAIN} (static ${PUB}${SSL_CERT_HOST:+, HTTPS})"
 elif php_fpm_pool_available "$USER"; then
   echo "OK — nginx vhost ${DOMAIN} (PHP-FPM unix:$(php_fpm_socket_path "$USER")${SSL_CERT_HOST:+, HTTPS})"

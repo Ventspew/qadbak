@@ -154,9 +154,37 @@ async function upsertProxy(domain, loc, dest, websocket = false) {
   await writeDomainConfigJson(domain, "proxies.json", proxies);
 }
 
-async function reloadNginx(domain, user) {
+async function reloadNginx(domain, user, { ssl = false } = {}) {
   const script = path.join(QADBAK_DIR, "scripts", "apply-domain-nginx.sh");
-  await exec("bash", [script, domain, user], { timeout: 120_000 });
+  const args = [script, domain, user];
+  if (ssl) args.push("--ssl");
+  await exec("bash", args, {
+    env: { ...process.env, ...(ssl ? { ISSUE_SSL: "1" } : {}) },
+    timeout: 360_000,
+  });
+}
+
+async function ensurePogoWebsiteConfig(pogoHost, user) {
+  const home = `/home/${user}`;
+  const pub = path.join(home, "public_html");
+  await mkdir(pub, { recursive: true });
+  await writeDomainConfigJson(pogoHost, "website.json", {
+    webRoot: pub,
+    mode: "static",
+    wwwRedirect: "none",
+  });
+}
+
+async function ensureDashboardProxy(pogoHost, user) {
+  const envBody = await readFile(path.join(POGO_DIR, ".env"), "utf8").catch(() => "");
+  const dashboardPort =
+    envBody.match(/^DASHBOARD_PORT=(.*)$/m)?.[1]?.trim() ||
+    process.env.POGO_DASHBOARD_PORT ||
+    "18080";
+  await ensurePogoWebsiteConfig(pogoHost, user);
+  await upsertProxy(pogoHost, "/", `http://127.0.0.1:${dashboardPort}/`, true);
+  await reloadNginx(pogoHost, user, { ssl: true });
+  return dashboardPort;
 }
 
 async function ensureDocker() {
@@ -379,21 +407,14 @@ export async function pogoStackInstall(domain, payloadJson) {
   await renderConfig();
   const warnings = await startStack(mode);
 
-  const envBody = await readFile(path.join(POGO_DIR, ".env"), "utf8").catch(() => "");
-  const dashboardPort =
-    envBody.match(/^DASHBOARD_PORT=(.*)$/m)?.[1]?.trim() ||
-    process.env.POGO_DASHBOARD_PORT ||
-    "18080";
-  await runStep("Configure reverse proxy", async () => {
-    await upsertProxy(pogoHost, "/", `http://127.0.0.1:${dashboardPort}/`, true);
-    await reloadNginx(pogoHost, user);
-  });
+  const dashboardPort = await runStep("Configure reverse proxy + TLS", async () =>
+    ensureDashboardProxy(pogoHost, user),
+  );
 
   const originIp = process.env.QADBAK_ORIGIN_IP?.trim() || "";
   if (originIp) {
     await dnsAdd(parent, { name: subPrefix, type: "A", value: originIp }).catch(() => {});
   }
-  await sslIssue(pogoHost, pogoHost).catch(() => {});
 
   const adminUrl = `https://${pogoHost}/`;
   const postInstall = buildPostInstall(mode, pogoHost, { arch, arm, warnings });
@@ -471,11 +492,25 @@ export async function pogoStackUpdate() {
     return { updated: false, reason: "missing_stack_dir" };
   }
   await applyRedroidArchEnv();
+  await ensureSafePorts();
   await renderConfig();
   await startStack(state.mode || "full");
+
+  const pogoHost = state.pogoHost || (state.domain ? `pogo.${state.domain}` : "");
+  if (pogoHost && state.domain) {
+    try {
+      const { user } = await resolveDomainUser(state.domain);
+      const dashboardPort = await ensureDashboardProxy(pogoHost, user);
+      state.dashboardPort = dashboardPort;
+      emit(`Re-applied nginx proxy ${pogoHost} → 127.0.0.1:${dashboardPort}`);
+    } catch (e) {
+      emit(`WARN: could not re-apply PoGo proxy: ${execDetail(e).slice(0, 500)}`);
+    }
+  }
+
   state.updatedAt = new Date().toISOString();
   await writeState(state);
-  const result = { updated: true, mode: state.mode };
+  const result = { updated: true, mode: state.mode, pogoHost };
   emit(result);
   return result;
 }
