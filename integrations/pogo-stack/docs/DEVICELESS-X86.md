@@ -32,10 +32,9 @@ lsmod | grep binder
 ```bash
 cd /opt/qadbak/integrations/pogo-stack
 bash scripts/repair-pogo-mapping.sh
-bash scripts/install-dragonite.sh          # place binary when you have it
-# edit services/dragonite/config/config.toml
+bash scripts/install-dragonite.sh          # pulls official GHCR image + renders config
 bash scripts/sync-accounts-to-dragonite.sh
-docker compose --profile mapping up -d dragonite rotom golbat
+docker compose --profile mapping --profile workers up -d dragonite rotom golbat
 ```
 
 Draw geofences/routes in Koji (`https://koji.inveil.net/`).

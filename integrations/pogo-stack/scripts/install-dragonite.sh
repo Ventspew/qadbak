@@ -1,33 +1,23 @@
 #!/usr/bin/env bash
-# Download Dragonite binary using UnownHash/Dragonite-Public helpers
+# Pull official Dragonite image + render config.toml
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TARGET="$ROOT/services/dragonite/binary"
-mkdir -p "$TARGET"
+cd "$ROOT"
 
-if [ -x "$TARGET/dragonite" ]; then
-  echo "Dragonite binary already present at $TARGET/dragonite"
-  exit 0
-fi
+IMAGE="${DRAGONITE_IMAGE:-ghcr.io/unownhash/dragonite-public:latest}"
 
-TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+echo "Pulling $IMAGE ..."
+docker pull "$IMAGE"
 
-echo "Cloning Dragonite-Public installer..."
-git clone --depth 1 https://github.com/UnownHash/Dragonite-Public.git "$TMP/dragonite-public"
+bash scripts/render-config.sh
+bash scripts/ensure-databases.sh
 
 echo ""
-echo "Dragonite is closed-source. Follow the installer in:"
-echo "  $TMP/dragonite-public"
+echo "Dragonite ready via official image:"
+echo "  $IMAGE"
+echo "Config:"
+echo "  config/rendered/dragonite.toml"
 echo ""
-echo "Copy the compiled binary to:"
-echo "  $TARGET/dragonite"
-echo ""
-echo "Then copy config:"
-echo "  cp services/dragonite/config/config.toml.example services/dragonite/config/config.toml"
-echo ""
-echo "Opening installer README..."
-if [ -f "$TMP/dragonite-public/README.md" ]; then
-  sed -n '1,80p' "$TMP/dragonite-public/README.md"
-fi
+echo "Start with:"
+echo "  docker compose --profile mapping up -d dragonite"

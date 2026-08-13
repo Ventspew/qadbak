@@ -1,9 +1,9 @@
-Place the Dragonite binary here as `dragonite` (executable).
-
-Run on the server:
+Dragonite no longer needs a host binary.
 
 ```bash
 bash scripts/install-dragonite.sh
+docker compose --profile mapping up -d dragonite
 ```
 
-Then copy the compiled binary to this directory.
+Image: `ghcr.io/unownhash/dragonite-public:latest`  
+Config: `config/rendered/dragonite.toml`

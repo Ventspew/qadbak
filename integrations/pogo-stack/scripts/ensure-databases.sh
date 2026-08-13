@@ -21,7 +21,7 @@ if [ ! -f "$SQL_FILE" ]; then
   exit 1
 fi
 
-echo "==> Ensuring golbat/reactmap/koji/poracle databases"
+echo "==> Ensuring golbat/reactmap/koji/poracle/dragonite databases"
 # Prefer MYSQL_PWD so the password is not visible on the process argv.
 if docker compose exec -T -e MYSQL_PWD="${DB_ROOT_PASSWORD}" mariadb \
   mariadb -uroot < "$SQL_FILE"; then

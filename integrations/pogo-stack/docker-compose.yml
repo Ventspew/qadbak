@@ -87,24 +87,29 @@ services:
     image: ghcr.io/unownhash/golbat:main
     networks: [pogo-net]
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:9001:9001"
     volumes:
-      - ./config/rendered/golbat.toml:/config.toml:ro
-      - golbat_data:/data
+      - ./config/rendered/golbat.toml:/golbat/config.toml:ro
+      - golbat_data:/golbat/cache
     depends_on:
       mariadb:
         condition: service_healthy
     profiles: ["mapping", "full"]
 
+  # Official image — do not build from RotomNG source (bun/nx, no package-lock).
   rotom:
-    build: ./services/rotom-ng
+    image: ${ROTOM_IMAGE:-ghcr.io/unownhash/rotom:main}
     networks: [pogo-net]
     restart: unless-stopped
     ports:
       - "7070:7070"
       - "7071:7071"
+      - "127.0.0.1:7072:7072"
     volumes:
-      - ./config/rotom:/app/config
-    profiles: ["mapping", "full"]
+      - ./config/rendered/rotom.local.json:/rotom/config/local.json:ro
+    # Also on workers so `compose --profile workers` can resolve depends_on.
+    profiles: ["mapping", "workers", "full"]
 
   reactmap:
     image: ${REACTMAP_IMAGE:-ghcr.io/watwowmap/reactmap:v1.27.2}
@@ -133,16 +138,17 @@ services:
     profiles: ["mapping", "full"]
 
   dragonite:
-    build: ./services/dragonite
+    image: ${DRAGONITE_IMAGE:-ghcr.io/unownhash/dragonite-public:latest}
     networks: [pogo-net]
     restart: unless-stopped
     volumes:
-      - ./services/dragonite/config:/config
-      - ./services/dragonite/binary:/binary:ro
+      - ./config/rendered/dragonite.toml:/dragonite/config.toml:ro
+    ports:
+      - "127.0.0.1:7272:7272"
     depends_on:
       - rotom
       - golbat
-      - account-api
+      - mariadb
     profiles: ["mapping", "full"]
 
   redroid-1:
@@ -176,7 +182,7 @@ services:
     networks: [pogo-net]
     restart: unless-stopped
     environment:
-      REDROID_HOSTS: redroid-1:5555,redroid-2:5555
+      REDROID_HOSTS: ${REDROID_HOSTS:-redroid-1:5555}
       CONFIG_DIR: /configs
       APK_DIR: /apk
       PUSH_INTERVAL: ${WORKER_PUSH_INTERVAL:-60}
@@ -185,7 +191,6 @@ services:
       - ./services/cosmog/apk:/apk:ro
     depends_on:
       - redroid-1
-      - redroid-2
       - rotom
     profiles: ["workers", "full"]
 

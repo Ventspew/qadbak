@@ -32,6 +32,15 @@ def render_env(path_in: str, path_out: str) -> None:
 
 render_env("config/golbat.toml", "config/rendered/golbat.toml")
 print("Rendered config/rendered/golbat.toml")
+
+render_env("config/rotom/local.json.template", "config/rendered/rotom.local.json")
+print("Rendered config/rendered/rotom.local.json")
+
+render_env(
+    "services/dragonite/config/config.toml.example",
+    "config/rendered/dragonite.toml",
+)
+print("Rendered config/rendered/dragonite.toml")
 PY
 
 mkdir -p config/cosmog/rendered

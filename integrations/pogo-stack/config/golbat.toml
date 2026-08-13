@@ -2,9 +2,10 @@ port = 9001
 raw_bearer = "${GOLBAT_RAW_BEARER}"
 api_secret = "${GOLBAT_API_SECRET}"
 api_docs = true
+pokemon_memory_only = true
 
 [database]
-username = "${DB_USER}"
+user = "${DB_USER}"
 password = "${DB_PASSWORD}"
 address = "mariadb:3306"
 db = "golbat"

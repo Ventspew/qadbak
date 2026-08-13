@@ -9,7 +9,8 @@ INTERVAL="${CHECK_INTERVAL:-120}"
 REDROID_CONTAINERS="${REDROID_CONTAINERS:-pogo-stack-redroid-1-1 pogo-stack-redroid-2-1}"
 
 check_rotom() {
-  curl -sf "http://rotom:7070" >/dev/null 2>&1 || return 1
+  # 7070/7071 are websockets; HTTP UI/API is on 7072.
+  curl -sf "http://rotom:7072/" >/dev/null 2>&1 || return 1
   return 0
 }
 

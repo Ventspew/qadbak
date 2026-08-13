@@ -12,6 +12,8 @@ MODE="${1:-}"
 log() { printf '%s\n' "$*"; }
 warn() { printf 'WARN: %s\n' "$*" >&2; }
 
+COMPOSE=(docker compose --profile mapping --profile workers)
+
 if [[ ! -f .env ]]; then
   echo "Missing $ROOT/.env" >&2
   exit 1
@@ -30,19 +32,21 @@ status_only() {
   log "==> Host arch: $ARCH"
   log "==> REDROID_IMAGE=$REDROID_IMAGE"
   lsmod | grep -E 'binder|ashmem' || warn "binder/ashmem not loaded — run setup-qadbak-host.sh"
-  docker compose --profile workers ps || true
-  docker compose --profile mapping ps rotom dragonite golbat 2>/dev/null || true
+  "${COMPOSE[@]}" ps || true
   log "==> APKs"
   ls -la services/cosmog/apk/*.apk 2>/dev/null || warn "No APKs in services/cosmog/apk/"
-  log "==> Dragonite binary"
-  ls -la services/dragonite/binary/dragonite 2>/dev/null || warn "Missing services/dragonite/binary/dragonite"
+  log "==> Dragonite image/config"
+  docker image inspect "${DRAGONITE_IMAGE:-ghcr.io/unownhash/dragonite-public:latest}" >/dev/null 2>&1 \
+    || warn "Dragonite image not pulled — run scripts/install-dragonite.sh"
+  ls -la config/rendered/dragonite.toml 2>/dev/null || warn "Missing config/rendered/dragonite.toml"
   if command -v adb >/dev/null 2>&1; then
     adb connect 127.0.0.1:5555 >/dev/null 2>&1 || true
     adb devices || true
     adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi 2>/dev/null || true
     adb -s 127.0.0.1:5555 shell pm list packages 2>/dev/null | grep -Ei 'cosmog|pokemon|niantic' || true
   fi
-  curl -sS -o /dev/null -w "rotom :7071 → %{http_code}\n" http://127.0.0.1:7071/ 2>/dev/null || true
+  curl -sS -o /dev/null -w "rotom  :7072 → %{http_code}\n" http://127.0.0.1:7072/ 2>/dev/null || true
+  curl -sS -o /dev/null -w "golbat :9001 → %{http_code}\n" http://127.0.0.1:9001/ 2>/dev/null || true
 }
 
 if [[ "$MODE" == "--status" ]]; then
@@ -67,7 +71,12 @@ if [[ "$ARCH" != "aarch64" && "$ARCH" != "arm64" ]]; then
   fi
 fi
 
-# Persist image + instance count
+# Persist image + instance count + REDROID_HOSTS
+HOSTS="redroid-1:5555"
+if [[ "$INSTANCES" -ge 2 ]]; then
+  HOSTS="redroid-1:5555,redroid-2:5555"
+fi
+
 python3 - <<PY
 from pathlib import Path
 import re
@@ -79,11 +88,13 @@ def upsert(text,k,v):
   return text.rstrip()+f"\n{k}={v}\n"
 t=upsert(t,"REDROID_IMAGE","$REDROID_IMAGE")
 t=upsert(t,"REDROID_INSTANCES","$INSTANCES")
+t=upsert(t,"REDROID_HOSTS","$HOSTS")
 p.write_text(t)
-print("env: REDROID_IMAGE=$REDROID_IMAGE REDROID_INSTANCES=$INSTANCES")
+print("env: REDROID_IMAGE=$REDROID_IMAGE REDROID_INSTANCES=$INSTANCES REDROID_HOSTS=$HOSTS")
 PY
 
 bash scripts/render-config.sh || exit 1
+bash scripts/ensure-databases.sh || warn "ensure-databases failed"
 
 missing=0
 if [[ ! -f services/cosmog/apk/cosmog.apk ]]; then
@@ -94,10 +105,6 @@ if [[ ! -f services/cosmog/apk/pogo.apk ]]; then
   warn "Missing services/cosmog/apk/pogo.apk (matching PoGo arm64 APK)"
   missing=1
 fi
-if [[ ! -x services/dragonite/binary/dragonite ]]; then
-  warn "Missing Dragonite binary — run scripts/install-dragonite.sh and place the binary"
-  missing=1
-fi
 if [[ -z "${COSMOG_TOKEN:-}" || "$COSMOG_TOKEN" == change-me* ]]; then
   warn "Set COSMOG_TOKEN in .env"
   missing=1
@@ -106,28 +113,30 @@ if [[ -z "${SERVER_PUBLIC_IP:-}" || "$SERVER_PUBLIC_IP" == "127.0.0.1" ]]; then
   warn "Set SERVER_PUBLIC_IP to this VPS public IPv4 in .env"
 fi
 
-log "==> Start control plane pieces (rotom/golbat/dragonite if present)"
-docker compose --profile mapping up -d rotom golbat || warn "mapping services failed"
-if [[ -x services/dragonite/binary/dragonite ]]; then
-  docker compose --profile mapping up -d dragonite || warn "dragonite failed"
-fi
+log "==> Pull / start control plane (rotom + golbat + dragonite)"
+docker pull "${ROTOM_IMAGE:-ghcr.io/unownhash/rotom:main}" || warn "rotom pull failed"
+docker pull ghcr.io/unownhash/golbat:main || warn "golbat pull failed"
+docker pull "${DRAGONITE_IMAGE:-ghcr.io/unownhash/dragonite-public:latest}" || warn "dragonite pull failed"
+
+"${COMPOSE[@]}" up -d rotom golbat || warn "rotom/golbat failed"
+"${COMPOSE[@]}" up -d dragonite || warn "dragonite failed"
 
 log "==> Start Redroid + worker-agent (+ houndour)"
 # Reset install marker so APKs reinstall after new files
-docker compose --profile workers run --rm --entrypoint rm worker-agent -f /app/.apks_installed 2>/dev/null || true
-docker compose --profile workers up -d redroid-1 || warn "redroid-1 failed"
+"${COMPOSE[@]}" run --rm --entrypoint rm worker-agent -f /app/.apks_installed 2>/dev/null || true
+"${COMPOSE[@]}" up -d redroid-1 || warn "redroid-1 failed"
 if [[ "$INSTANCES" -ge 2 ]]; then
-  docker compose --profile workers up -d redroid-2 || warn "redroid-2 failed"
+  "${COMPOSE[@]}" up -d redroid-2 || warn "redroid-2 failed"
 fi
-docker compose --profile workers up -d worker-agent houndour || warn "worker-agent/houndour failed"
+"${COMPOSE[@]}" up -d worker-agent houndour || warn "worker-agent/houndour failed"
 
 sleep 8
 status_only
 
 log ""
 log "Next:"
-log "  1) Fix any WARN above (APKs, Dragonite, COSMOG_TOKEN, SERVER_PUBLIC_IP)"
-log "  2) docker compose logs -f worker-agent redroid-1"
+log "  1) Fix any WARN above (APKs, COSMOG_TOKEN, SERVER_PUBLIC_IP)"
+log "  2) docker compose --profile mapping --profile workers logs -f worker-agent redroid-1 rotom"
 log "  3) When Cosmog connects, check Golbat DB / ReactMap for spawns"
 log "Docs: docs/DEVICELESS-X86.md"
 if [[ "$missing" -eq 1 ]]; then
