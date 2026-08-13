@@ -80,6 +80,7 @@ for candidate in "$DOMAIN" "www.${DOMAIN}"; do
 done
 
 write_common_locations() {
+  local HAS_ROOT_PROXY=0
   MODSEC_JSON="$QADBAK_DIR/data/domain-config/${DOMAIN}/modsecurity.json"
   MODSEC_RULES="$QADBAK_DIR/data/domain-config/${DOMAIN}/modsecurity-nginx.conf"
   if [[ -f "$MODSEC_JSON" ]] && [[ -f "$MODSEC_RULES" ]] && command -v jq &>/dev/null; then
@@ -89,10 +90,16 @@ write_common_locations() {
     fi
   fi
 
+  HAS_ROOT_PROXY=0
   if [[ -f "$PROXY_JSON" ]] && command -v jq &>/dev/null; then
     while IFS=$'\t' read -r ppath pdest pws; do
       [[ -z "$ppath" || -z "$pdest" ]] && continue
-      loc="${ppath%/}/"
+      if [[ "$ppath" == "/" ]]; then
+        loc="/"
+        HAS_ROOT_PROXY=1
+      else
+        loc="${ppath%/}/"
+      fi
       echo "    location ${loc} {"
       echo "        proxy_pass ${pdest};"
       echo "        proxy_http_version 1.1;"
@@ -105,7 +112,7 @@ write_common_locations() {
         echo "        proxy_set_header Connection \"upgrade\";"
       fi
       echo "    }"
-    done < <(jq -r '.[] | [.path,.dest,(.websocket // false)] | @tsv' "$PROXY_JSON" 2>/dev/null)
+    done < <(jq -r 'unique_by(.path) | .[] | [.path,.dest,(.websocket // false)] | @tsv' "$PROXY_JSON" 2>/dev/null)
   fi
 
   if [[ -f "$REDIR_JSON" ]] && command -v jq &>/dev/null; then
@@ -124,8 +131,10 @@ write_common_locations() {
     echo "    }"
   fi
 
-  echo "    location / { try_files \$uri \$uri/ =404; }"
-  if [[ "$SITE_MODE" != "static" ]]; then
+  if [[ "${HAS_ROOT_PROXY:-0}" != "1" ]]; then
+    echo "    location / { try_files \$uri \$uri/ =404; }"
+  fi
+  if [[ "$SITE_MODE" != "static" && "${HAS_ROOT_PROXY:-0}" != "1" ]]; then
     nginx_php_location_lines "$USER" "$APACHE_BACKEND"
   fi
 }

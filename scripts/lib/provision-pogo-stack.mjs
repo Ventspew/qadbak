@@ -385,7 +385,7 @@ export async function pogoStackInstall(domain, payloadJson) {
     process.env.POGO_DASHBOARD_PORT ||
     "18080";
   await runStep("Configure reverse proxy", async () => {
-    await upsertProxy(pogoHost, "/", `http://127.0.0.1:${dashboardPort}`, true);
+    await upsertProxy(pogoHost, "/", `http://127.0.0.1:${dashboardPort}/`, true);
     await reloadNginx(pogoHost, user);
   });
 
