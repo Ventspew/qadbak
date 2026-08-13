@@ -23,21 +23,44 @@ export type Account = {
   updated_at: string;
 };
 
-const apiKey = import.meta.env.VITE_API_KEY ?? "";
+async function readError(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text) as {
+      detail?: string | Array<{ msg?: string; loc?: unknown }>;
+      error?: string;
+    };
+    if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail)) {
+      return data.detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
+    }
+    if (data.error) return data.error;
+  } catch {
+    /* not JSON */
+  }
+  return text || res.statusText || `HTTP ${res.status}`;
+}
 
 async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || res.statusText);
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch {
+    throw new Error(
+      "Could not reach Account API (failed to fetch). Check that account-api is up and /api/accounts is proxied.",
+    );
   }
+  if (!res.ok) {
+    throw new Error(await readError(res));
+  }
+  if (res.status === 204) return null;
   return res.json();
 }
 

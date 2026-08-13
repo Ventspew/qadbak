@@ -54,10 +54,10 @@ services:
   dashboard:
     build:
       context: ./services/dashboard
-      args:
-        VITE_API_KEY: ${ACCOUNT_API_KEY}
     networks: [pogo-net]
     restart: unless-stopped
+    environment:
+      ACCOUNT_API_KEY: ${ACCOUNT_API_KEY}
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-18080}:8080"
     depends_on:

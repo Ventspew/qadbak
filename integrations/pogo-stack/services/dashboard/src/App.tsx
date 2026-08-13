@@ -122,22 +122,28 @@ export default function App() {
 
       <div className="panel">
         <div className="panel-header">
-          <h2>Add account</h2>
+          <h2>Add account to pool</h2>
         </div>
+        <p className="hint">
+          Store PTC or Google credentials for workers. This is not an OAuth login — paste the
+          username/email and password the scanner should use.
+        </p>
         <form onSubmit={onCreate}>
           <div className="form-grid">
             <select
               value={form.auth_service}
               onChange={(e) => setForm((f) => ({ ...f, auth_service: e.target.value }))}
+              aria-label="Auth service"
             >
-              <option value="ptc">PTC</option>
-              <option value="google">Google</option>
+              <option value="ptc">Pokémon Trainer Club (PTC)</option>
+              <option value="google">Google account</option>
             </select>
             <input
-              placeholder="Username"
+              placeholder={form.auth_service === "google" ? "Google email" : "PTC username"}
               value={form.username}
               onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
               required
+              autoComplete="username"
             />
             <input
               placeholder="Password"
@@ -145,6 +151,7 @@ export default function App() {
               value={form.password}
               onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
               required
+              autoComplete="current-password"
             />
             <input
               placeholder="Notes (optional)"
@@ -152,7 +159,8 @@ export default function App() {
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             />
           </div>
-          <button type="submit">Add account</button>
+          {error ? <p className="error">{error}</p> : null}
+          <button type="submit">Save to account pool</button>
         </form>
       </div>
 
@@ -161,7 +169,7 @@ export default function App() {
           <h2>Accounts</h2>
           <span className="badge idle">{accounts.length} rows</span>
         </div>
-        {error ? <p className="error">{error}</p> : null}
+        {error && !accounts.length ? <p className="error">{error}</p> : null}
         <table>
           <thead>
             <tr>

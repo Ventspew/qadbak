@@ -1,6 +1,7 @@
 import time
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
 from app.config import settings
@@ -13,9 +14,19 @@ app = FastAPI(
     version="0.1.0",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 def verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
-    if settings.api_key and x_api_key != settings.api_key:
+    if not settings.api_key:
+        return
+    if x_api_key != settings.api_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
