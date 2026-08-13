@@ -42,6 +42,12 @@ bash scripts/ensure-databases.sh || \
   docker compose exec -T -e MYSQL_PWD="${DB_ROOT_PASSWORD}" mariadb mariadb -uroot < config/mariadb/02-databases.sql || \
   fail_soft "database ensure failed"
 
+# ReactMap knex panics if knex_migrations references files not in this image.
+if docker compose logs reactmap 2>/dev/null | grep -q 'migration directory is corrupt'; then
+  log "==> Detected corrupt ReactMap migrations — resetting reactmap DB"
+  bash scripts/reset-reactmap-db.sh || fail_soft "reactmap DB reset failed"
+fi
+
 log "==> Pull images (best effort)"
 docker compose pull koji golbat reactmap || fail_soft "pull had errors — continuing"
 
@@ -73,8 +79,21 @@ curl -sS -o /dev/null -w "reactmap :${REACTMAP_PORT} → %{http_code}\n" "http:/
 curl -sS -o /dev/null -w "koji     :${KOJI_PORT} → %{http_code}\n" "http://127.0.0.1:${KOJI_PORT}/" || true
 
 if [[ "$map_code" == "000" || "$map_code" == "502" || "$map_code" == "504" ]]; then
+  if docker compose logs reactmap 2>/dev/null | grep -q 'migration directory is corrupt'; then
+    log "==> ReactMap migration corrupt — resetting DB and retrying once"
+    bash scripts/reset-reactmap-db.sh || true
+    docker compose up -d --force-recreate reactmap || true
+    sleep 8
+    map_code="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${REACTMAP_PORT}/" || true)"
+    curl -sS -o /dev/null -w "reactmap :${REACTMAP_PORT} → %{http_code}\n" "http://127.0.0.1:${REACTMAP_PORT}/" || true
+  fi
+fi
+
+if [[ "$map_code" == "000" || "$map_code" == "502" || "$map_code" == "504" ]]; then
   log "FAILED — reactmap not healthy. Logs:"
   docker compose logs --tail=120 reactmap || true
+  log "Golbat status (often also restarting):"
+  docker compose logs --tail=40 golbat || true
   exit 1
 fi
 

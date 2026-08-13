@@ -9,9 +9,4 @@ password = "${DB_PASSWORD}"
 address = "mariadb:3306"
 db = "golbat"
 
-[koji]
-url = "http://koji:8080/api/v1/geofence/feature-collection/default"
-bearer_token = "${KOJI_BEARER_TOKEN}"
-
-[[webhooks]]
-url = "http://poracle:3030"
+# Koji/Poracle are optional — missing upstreams must not crash Golbat on boot.

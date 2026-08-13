@@ -112,8 +112,6 @@ services:
     restart: unless-stopped
     # Image default Cmd is bare `node`; start the server entrypoint.
     command: ["sh", "-c", "node server/src/index.js"]
-    environment:
-      NODE_ENV: production
     volumes:
       - ./config/rendered/reactmap.local.json:/home/node/server/src/configs/local.json:ro
       - ./config/reactmap/areas.json:/home/node/server/src/configs/areas.json:ro
