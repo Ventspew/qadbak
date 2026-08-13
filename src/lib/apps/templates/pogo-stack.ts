@@ -29,20 +29,29 @@ export const pogoStackTemplate: AppTemplate = {
     {
       name: "mode",
       label: "Stack mode",
-      type: "text",
+      type: "select",
       required: true,
       defaultValue: "full",
-      pattern: "^(core|mapping|full|workers)$",
-      help: "core | mapping | full (ARM64 for deviceless workers) | workers",
+      options: [
+        { value: "core", label: "Core — account API + dashboard" },
+        { value: "mapping", label: "Mapping — core + Golbat, ReactMap, RotomNG" },
+        { value: "full", label: "Full — mapping + deviceless workers (ARM64)" },
+        { value: "workers", label: "Workers only — Redroid/Cosmog stack" },
+      ],
+      help: "Use core or mapping on x86 VPS. Full/workers need ARM64 for Redroid.",
     },
   ],
   async install({ input }) {
     const domain = input.domain?.trim().toLowerCase();
     const subdomain = (input.subdomain || "pogo").trim().toLowerCase();
     const mode = (input.mode || "full").trim();
+    const allowedModes = new Set(["core", "mapping", "full", "workers"]);
     if (!domain) throw new Error("Domain is required.");
     if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) {
       throw new Error("Invalid subdomain prefix.");
+    }
+    if (!allowedModes.has(mode)) {
+      throw new Error(`Invalid stack mode "${mode}".`);
     }
 
     const result = (await runProvisioningHelper(

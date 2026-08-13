@@ -33,6 +33,15 @@ export type AppFormField =
       type: "boolean";
       help?: string;
       defaultValue?: string;
+    }
+  | {
+      name: string;
+      label: string;
+      type: "select";
+      options: Array<{ value: string; label: string }>;
+      help?: string;
+      required?: boolean;
+      defaultValue?: string;
     };
 
 /** Output the user sees on the success screen. Shown ONCE. */

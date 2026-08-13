@@ -78,6 +78,22 @@ export function AppInstallForm({ template }: { template: AppTemplateSummary }) {
                 />
                 Enable
               </label>
+            ) : field.type === "select" ? (
+              <select
+                id={`f-${field.name}`}
+                className="qadbak-field focus:border-panel-link focus:outline-none focus:ring-1 focus:ring-panel-link"
+                value={values[field.name] ?? field.defaultValue ?? field.options[0]?.value ?? ""}
+                required={"required" in field ? field.required : false}
+                onChange={(e) =>
+                  setValues((v) => ({ ...v, [field.name]: e.target.value }))
+                }
+              >
+                {field.options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             ) : (
               <Input
                 id={`f-${field.name}`}

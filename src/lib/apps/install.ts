@@ -106,6 +106,28 @@ function validate(template: AppTemplate, input: Record<string, unknown>): Record
       continue;
     }
 
+    if (field.type === "select") {
+      const raw = input[field.name];
+      const value =
+        typeof raw === "string" && raw.trim()
+          ? raw.trim()
+          : field.defaultValue ?? field.options[0]?.value ?? "";
+      const allowed = new Set(field.options.map((option) => option.value));
+      if (!value) {
+        if (field.required) {
+          throw new AppValidationError(`Missing required field "${field.label}".`);
+        }
+        continue;
+      }
+      if (!allowed.has(value)) {
+        throw new AppValidationError(
+          `"${field.label}" must be one of: ${[...allowed].join(", ")}.`,
+        );
+      }
+      out[field.name] = value;
+      continue;
+    }
+
     const raw = input[field.name];
     const value = typeof raw === "string" ? raw.trim() : "";
     if (!value) {
