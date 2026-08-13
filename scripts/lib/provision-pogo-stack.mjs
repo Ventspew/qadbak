@@ -48,14 +48,44 @@ async function hostArch() {
   return stdout.trim().toLowerCase();
 }
 
-async function assertModeSupported(mode) {
-  const arch = await hostArch();
-  const arm = arch === "aarch64" || arch === "arm64";
-  if ((mode === "full" || mode === "workers") && !arm) {
-    fail(
-      `Stack mode "${mode}" requires ARM64 for Redroid/Cosmog workers (this server is ${arch}). Choose "core" or "mapping" instead.`,
-    );
+function isArmArch(arch) {
+  return arch === "aarch64" || arch === "arm64";
+}
+
+function redroidImageForArch(arch) {
+  return isArmArch(arch)
+    ? "abing7k/redroid:a11_magisk_arm"
+    : "redroid/redroid:11.0.0-latest";
+}
+
+function upsertEnvLine(body, key, value) {
+  const re = new RegExp(`^${key}=.*$`, "m");
+  if (re.test(body)) {
+    return body.replace(re, `${key}=${value}`);
   }
+  return `${body.replace(/\s*$/, "")}\n${key}=${value}\n`;
+}
+
+async function applyRedroidArchEnv() {
+  const envPath = path.join(POGO_DIR, ".env");
+  const arch = await hostArch();
+  const image = redroidImageForArch(arch);
+  let body = await readFile(envPath, "utf8");
+  const current = body.match(/^REDROID_IMAGE=(.*)$/m)?.[1]?.trim() || "";
+  const staleArmOnX86 =
+    !isArmArch(arch) && /arm|a11_magisk/i.test(current);
+  const defaultOfficialOnArm =
+    isArmArch(arch) && /^redroid\/redroid:/.test(current);
+  if (!current || staleArmOnX86 || defaultOfficialOnArm) {
+    body = upsertEnvLine(body, "REDROID_IMAGE", image);
+    await writeFile(envPath, body, "utf8");
+  }
+  emit(
+    `Host arch ${arch} — Redroid image ${
+      current && !staleArmOnX86 && !defaultOfficialOnArm ? current : image
+    }`,
+  );
+  return { arch, arm: isArmArch(arch) };
 }
 
 async function resolveComposeRunner() {
@@ -174,17 +204,15 @@ async function ensureEnv(mode) {
   emit(`PoGo stack mode: ${mode}`);
 }
 
-async function composeProfiles(mode) {
+function composeProfiles(mode) {
   if (mode === "core") return [];
   if (mode === "mapping") return ["mapping"];
-  if (mode === "workers") return ["mapping", "workers"];
-  if (mode === "full") return ["full"];
-  return ["full"];
+  if (mode === "workers" || mode === "full") return ["mapping", "workers"];
+  return ["mapping", "workers"];
 }
 
-async function runCompose(mode, action = "up") {
+async function runComposeWithProfiles(profiles, action = "up") {
   const runner = await resolveComposeRunner();
-  const profiles = await composeProfiles(mode);
   const args = [...runner.prefix];
   for (const p of profiles) {
     args.push("--profile", p);
@@ -192,13 +220,30 @@ async function runCompose(mode, action = "up") {
   if (action === "up") {
     args.push("up", "-d", "--build");
   } else if (action === "pull") {
-    args.push("pull", "--ignore-buildable");
+    args.push("pull");
   } else {
     fail(`Unknown compose action: ${action}`);
   }
-  await runStep(`docker compose ${action}`, async () => {
+  const label = `docker compose ${action}${profiles.length ? ` (${profiles.join("+")})` : " (core)"}`;
+  await runStep(label, async () => {
     await exec(runner.cmd, args, { cwd: POGO_DIR, timeout: 1_800_000 });
   });
+}
+
+async function runCompose(mode, action = "up") {
+  const profiles = composeProfiles(mode);
+  if (action === "pull") {
+    await runComposeWithProfiles(profiles, "pull");
+    return;
+  }
+  if (mode === "core") {
+    await runComposeWithProfiles([], "up");
+    return;
+  }
+  await runComposeWithProfiles(["mapping"], "up");
+  if (mode === "full" || mode === "workers") {
+    await runComposeWithProfiles(["workers"], "up");
+  }
 }
 
 async function renderConfig() {
@@ -248,7 +293,6 @@ export async function pogoStackInstall(domain, payloadJson) {
   }
 
   const { user } = await resolveDomainUser(parent);
-  await assertModeSupported(mode);
   const pogoHost = await runStep("Create PoGo subdomain", async () =>
     ensurePogoSubdomain(parent, user, subPrefix),
   );
@@ -256,6 +300,7 @@ export async function pogoStackInstall(domain, payloadJson) {
   await ensureDocker();
   await ensureHostPrep(mode === "full" || mode === "workers");
   await ensureEnv(mode);
+  const { arch, arm } = await applyRedroidArchEnv();
   await renderConfig();
   await runCompose(mode, "pull").catch(() => {});
   await runCompose(mode, "up");
@@ -273,12 +318,13 @@ export async function pogoStackInstall(domain, payloadJson) {
   await sslIssue(pogoHost, pogoHost).catch(() => {});
 
   const adminUrl = `https://${pogoHost}/`;
-  const postInstall = buildPostInstall(mode, pogoHost);
+  const postInstall = buildPostInstall(mode, pogoHost, { arch, arm });
   const state = {
     installedAt: new Date().toISOString(),
     domain: parent,
     pogoHost,
     mode,
+    arch,
     dashboardPort,
     stackDir: POGO_DIR,
     postInstall,
@@ -290,16 +336,22 @@ export async function pogoStackInstall(domain, payloadJson) {
   return result;
 }
 
-function buildPostInstall(mode, host) {
+function buildPostInstall(mode, host, { arch, arm } = {}) {
   const lines = [
     `Dashboard: https://${host}/`,
     "Add Pokémon GO accounts in the dashboard or via Account API.",
   ];
   if (mode === "full" || mode === "workers") {
     lines.push(
-      "Place cosmog.apk in integrations/pogo-stack/services/cosmog/apk/ then restart worker-agent.",
-      "ARM64 VPS required for deviceless Redroid workers.",
+      "Place cosmog.apk (and optional pogo.apk) in integrations/pogo-stack/services/cosmog/apk/ then restart worker-agent.",
     );
+    if (arm) {
+      lines.push("ARM64 host: Magisk Redroid image is used for Cosmog workers.");
+    } else {
+      lines.push(
+        `x86 host (${arch || "amd64"}): official Redroid amd64 is used so Full can start. Cosmog/PoGo ARM APKs work more reliably on ARM64.`,
+      );
+    }
   }
   if (mode !== "core") {
     lines.push("Run scripts/install-dragonite.sh for the Dragonite binary (closed source).");
@@ -336,6 +388,7 @@ export async function pogoStackUpdate() {
   if (!(await access(POGO_DIR).then(() => true).catch(() => false))) {
     return { updated: false, reason: "missing_stack_dir" };
   }
+  await applyRedroidArchEnv();
   await renderConfig();
   await runCompose(state.mode || "full", "pull").catch(() => {});
   await runCompose(state.mode || "full", "up");

@@ -31,14 +31,14 @@ export const pogoStackTemplate: AppTemplate = {
       label: "Stack mode",
       type: "select",
       required: true,
-      defaultValue: "mapping",
+      defaultValue: "full",
       options: [
         { value: "core", label: "Core — account API + dashboard" },
         { value: "mapping", label: "Mapping — core + Golbat, ReactMap, RotomNG" },
-        { value: "full", label: "Full — mapping + deviceless workers (ARM64)" },
+        { value: "full", label: "Full — mapping + Redroid workers (x86 and ARM64)" },
         { value: "workers", label: "Workers only — Redroid/Cosmog stack" },
       ],
-      help: "Use core or mapping on x86 VPS. Full/workers need ARM64 for Redroid.",
+      help: "Full starts mapping plus Redroid. x86 uses official Redroid; ARM64 uses the Magisk image.",
     },
   ],
   async install({ input }) {

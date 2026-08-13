@@ -83,7 +83,7 @@ Deploy modes:
   --full          everything on one Qadbak server
 
 Next steps:
-1. sudo bash scripts/setup-qadbak-host.sh   (once, ARM64 VPS)
+1. sudo bash scripts/setup-qadbak-host.sh   (once, x86 or ARM64)
 2. Place Cosmog APK in services/cosmog/apk/
 3. bash scripts/install-dragonite.sh
 4. Qadbak reverse proxy — docs/QADBAK-DEPLOY.md

@@ -6,7 +6,7 @@ Bundled under `integrations/pogo-stack/`. Installed via **Admin → Apps → PoG
 
 1. Open **Admin → Apps**
 2. Click **PoGo Stack** (⚡)
-3. Choose domain, subdomain (`pogo`), mode (`full` recommended on ARM64)
+3. Choose domain, subdomain (`pogo`), mode (`full` — mapping + Redroid on x86 and ARM64)
 4. Install — Qadbak provisions Docker, nginx HTTPS proxy, and starts containers
 
 ## Updates

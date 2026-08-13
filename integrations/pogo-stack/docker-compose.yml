@@ -130,8 +130,7 @@ services:
     profiles: ["mapping", "full"]
 
   redroid-1:
-    image: abing7k/redroid:a11_magisk_arm
-    platform: linux/arm64
+    image: ${REDROID_IMAGE:-redroid/redroid:11.0.0-latest}
     privileged: true
     networks: [pogo-net]
     restart: unless-stopped
@@ -144,8 +143,7 @@ services:
     profiles: ["workers", "full"]
 
   redroid-2:
-    image: abing7k/redroid:a11_magisk_arm
-    platform: linux/arm64
+    image: ${REDROID_IMAGE:-redroid/redroid:11.0.0-latest}
     privileged: true
     networks: [pogo-net]
     restart: unless-stopped

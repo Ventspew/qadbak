@@ -6,14 +6,14 @@ Run the **complete** PoGo stack on a single Qadbak VPS using **Redroid** (virtua
 
 | Requirement | Details |
 |-------------|---------|
-| **VPS architecture** | **ARM64 (Ampere)** — e.g. Hetzner CAX, Oracle Ampere |
+| **VPS architecture** | **x86 or ARM64** — Full starts on both. Cosmog/PoGo ARM APKs are more reliable on ARM64 (Ampere). |
 | **OS** | Ubuntu 22.04 / 24.04 (Qadbak native stack) |
 | **RAM** | 16 GB+ recommended (2 Redroid × 17 workers) |
-| **Kernel** | `binder_linux` + `ashmem_linux` |
+| **Kernel** | `binder_linux` (+ `ashmem_linux` on older kernels) |
 | **Cosmog license** | From Cosmog Discord |
 | **APKs** | `cosmog.apk` + `pogo.apk` in `services/cosmog/apk/` |
 
-x86 Qadbak VPS can run the **core + mapping** stack but **not** Redroid/Cosmog workers.
+On **x86** Qadbak uses `redroid/redroid:11.0.0-latest` (amd64). On **ARM64** it uses the Magisk ARM image.
 
 ## One-command full deploy
 
@@ -39,7 +39,7 @@ Workers       redroid-1, redroid-2, worker-agent, Houndour
 
 | Service | Role |
 |---------|------|
-| **redroid-1/2** | Virtual Android 11 + Magisk (ARM64 container) |
+| **redroid-1/2** | Virtual Android 11 (official Redroid on x86, Magisk image on ARM64) |
 | **worker-agent** | ADB: install APKs, push `cosmog.json`, start Cosmog |
 | **houndour** | Watchdog: restart Redroid if Rotom is unreachable |
 | **rotom** | Connects Cosmog workers → Dragonite → Golbat |
