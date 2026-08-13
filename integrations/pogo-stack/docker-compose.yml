@@ -56,6 +56,8 @@ services:
     restart: unless-stopped
     environment:
       ACCOUNT_API_KEY: ${ACCOUNT_API_KEY}
+      # Only substitute the API key — leave nginx $host/$uri vars alone.
+      NGINX_ENVSUBST_FILTER: ACCOUNT_API_KEY
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-18080}:8080"
     depends_on:

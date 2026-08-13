@@ -66,32 +66,42 @@ if [[ "$SITE_MODE" != "static" && -f "$QADBAK_DIR/scripts/apply-php-fpm-pool.sh"
   bash "$QADBAK_DIR/scripts/apply-php-fpm-pool.sh" "$USER" "$PHP_VER" "/home/${USER}" 2>/dev/null || true
 fi
 
-if [[ "$ISSUE_SSL_RESOLVED" == "1" ]] && command -v certbot &>/dev/null; then
-  if [[ ! -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
-    LE_EMAIL="${QADBAK_LE_EMAIL:-${LE_EMAIL:-admin@${DOMAIN}}}"
-    echo "==> TLS: certbot webroot for $DOMAIN (email: $LE_EMAIL)"
-    if certbot certonly --webroot -w "$PUB" -d "$DOMAIN" -d "www.${DOMAIN}" \
-         --non-interactive --agree-tos -m "$LE_EMAIL" --keep-until-expiring; then
-      echo "    OK — Let's Encrypt cert issued via webroot"
-    elif certbot certonly --webroot -w "$PUB" -d "$DOMAIN" \
-         --non-interactive --agree-tos -m "$LE_EMAIL" --keep-until-expiring; then
-      echo "    OK — Let's Encrypt cert issued for $DOMAIN only (www variant skipped)"
-    else
-      echo "    WARN — certbot failed for $DOMAIN" >&2
-    fi
+# Detect root reverse proxy before writing/status (must not be function-local).
+HAS_ROOT_PROXY=0
+if [[ -f "$PROXY_JSON" ]] && command -v jq &>/dev/null; then
+  if jq -e '[.[] | select(.path == "/" and (.dest // "") != "")] | length > 0' "$PROXY_JSON" &>/dev/null; then
+    HAS_ROOT_PROXY=1
   fi
 fi
 
-SSL_CERT_HOST=""
-for candidate in "$DOMAIN" "www.${DOMAIN}"; do
-  if [[ -f "/etc/letsencrypt/live/${candidate}/fullchain.pem" ]]; then
-    SSL_CERT_HOST="$candidate"
-    break
+# Subdomains like pogo.example.com almost never have www — skip it for LE / server_name.
+INCLUDE_WWW=1
+dot_count="${DOMAIN//[^.]/}"
+if (( ${#dot_count} >= 2 )); then
+  INCLUDE_WWW=0
+fi
+if [[ "$WWW_REDIRECT" == "apex" ]]; then
+  HTTP_SERVER_NAMES="$DOMAIN"
+else
+  if [[ "$INCLUDE_WWW" == "1" ]]; then
+    HTTP_SERVER_NAMES="${DOMAIN} www.${DOMAIN}"
+  else
+    HTTP_SERVER_NAMES="$DOMAIN"
   fi
-done
+fi
+
+write_acme_challenge_location() {
+  # Must come before location / when a root proxy exists, otherwise HTTP-01
+  # challenges are forwarded to the upstream app (certbot sees HTML → fail).
+  echo "    location ^~ /.well-known/acme-challenge/ {"
+  echo "        root ${PUB};"
+  echo "        default_type \"text/plain\";"
+  echo "        allow all;"
+  echo "        try_files \$uri =404;"
+  echo "    }"
+}
 
 write_common_locations() {
-  local HAS_ROOT_PROXY=0
   MODSEC_JSON="$QADBAK_DIR/data/domain-config/${DOMAIN}/modsecurity.json"
   MODSEC_RULES="$QADBAK_DIR/data/domain-config/${DOMAIN}/modsecurity-nginx.conf"
   if [[ -f "$MODSEC_JSON" ]] && [[ -f "$MODSEC_RULES" ]] && command -v jq &>/dev/null; then
@@ -101,13 +111,13 @@ write_common_locations() {
     fi
   fi
 
-  HAS_ROOT_PROXY=0
+  write_acme_challenge_location
+
   if [[ -f "$PROXY_JSON" ]] && command -v jq &>/dev/null; then
     while IFS=$'\t' read -r ppath pdest pws; do
       [[ -z "$ppath" || -z "$pdest" ]] && continue
       if [[ "$ppath" == "/" ]]; then
         loc="/"
-        HAS_ROOT_PROXY=1
       else
         loc="${ppath%/}/"
       fi
@@ -180,70 +190,117 @@ write_site_server() {
   echo "}"
 }
 
+write_vhost_file() {
+  local out="$1"
+  {
+    echo "# Qadbak — ${DOMAIN} (user ${USER}, mode ${SITE_MODE}, root ${PUB})"
+    if [[ -n "$SSL_CERT_HOST" ]]; then
+      if [[ "$WWW_REDIRECT" == "apex" ]]; then
+        write_site_server 1 "$SSL_CERT_HOST" "$DOMAIN"
+        if [[ "$INCLUDE_WWW" == "1" ]]; then
+          echo ""
+          echo "server {"
+          echo "    listen 443 ssl http2;"
+          echo "    listen [::]:443 ssl http2;"
+          echo "    server_name www.${DOMAIN};"
+          echo "    ssl_certificate     /etc/letsencrypt/live/${SSL_CERT_HOST}/fullchain.pem;"
+          echo "    ssl_certificate_key /etc/letsencrypt/live/${SSL_CERT_HOST}/privkey.pem;"
+          echo "    return 301 https://${DOMAIN}\$request_uri;"
+          echo "}"
+        fi
+        echo ""
+        echo "server {"
+        echo "    listen 80;"
+        echo "    listen [::]:80;"
+        echo "    server_name ${HTTP_SERVER_NAMES};"
+        echo "    root ${PUB};"
+        write_acme_challenge_location
+        echo "    location / { return 301 https://${DOMAIN}\$request_uri; }"
+        echo "}"
+      else
+        write_site_server 1 "$SSL_CERT_HOST" "$HTTP_SERVER_NAMES"
+        echo ""
+        echo "server {"
+        echo "    listen 80;"
+        echo "    listen [::]:80;"
+        echo "    server_name ${HTTP_SERVER_NAMES};"
+        echo "    root ${PUB};"
+        write_acme_challenge_location
+        echo "    location / { return 301 https://\$host\$request_uri; }"
+        echo "}"
+      fi
+    else
+      if [[ "$WWW_REDIRECT" == "apex" && "$INCLUDE_WWW" == "1" ]]; then
+        write_site_server 0 "" "$DOMAIN"
+        echo ""
+        echo "server {"
+        echo "    listen 80;"
+        echo "    listen [::]:80;"
+        echo "    server_name www.${DOMAIN};"
+        echo "    return 301 http://${DOMAIN}\$request_uri;"
+        echo "}"
+      else
+        write_site_server 0 "" "$HTTP_SERVER_NAMES"
+      fi
+    fi
+  } >"$out"
+}
+
+reload_nginx_if_needed() {
+  if [[ "${NGINX_BATCH:-}" != "1" ]]; then
+    nginx -t
+    systemctl reload nginx
+  fi
+}
+
 OUT="$(nginx_customer_conf_available "$DOMAIN")"
 ENABLED_LINK="$(nginx_customer_conf_enabled "$DOMAIN")"
-{
-  echo "# Qadbak — ${DOMAIN} (user ${USER}, mode ${SITE_MODE}, root ${PUB})"
-  if [[ -n "$SSL_CERT_HOST" ]]; then
-    if [[ "$WWW_REDIRECT" == "apex" ]]; then
-      write_site_server 1 "$SSL_CERT_HOST" "$DOMAIN"
-      echo ""
-      echo "server {"
-      echo "    listen 443 ssl http2;"
-      echo "    listen [::]:443 ssl http2;"
-      echo "    server_name www.${DOMAIN};"
-      echo "    ssl_certificate     /etc/letsencrypt/live/${SSL_CERT_HOST}/fullchain.pem;"
-      echo "    ssl_certificate_key /etc/letsencrypt/live/${SSL_CERT_HOST}/privkey.pem;"
-      echo "    return 301 https://${DOMAIN}\$request_uri;"
-      echo "}"
-      echo ""
-      echo "server {"
-      echo "    listen 80;"
-      echo "    listen [::]:80;"
-      echo "    server_name ${DOMAIN} www.${DOMAIN};"
-      echo "    location ^~ /.well-known/acme-challenge/ {"
-      echo "        root ${PUB};"
-      echo "        allow all;"
-      echo "        try_files \$uri =404;"
-      echo "    }"
-      echo "    location / { return 301 https://${DOMAIN}\$request_uri; }"
-      echo "}"
-    else
-      write_site_server 1 "$SSL_CERT_HOST" "${DOMAIN} www.${DOMAIN}"
-      echo ""
-      echo "server {"
-      echo "    listen 80;"
-      echo "    listen [::]:80;"
-      echo "    server_name ${DOMAIN} www.${DOMAIN};"
-      echo "    root ${PUB};"
-      echo "    location ^~ /.well-known/acme-challenge/ {"
-      echo "        allow all;"
-      echo "        try_files \$uri =404;"
-      echo "    }"
-      echo "    location / { return 301 https://\$host\$request_uri; }"
-      echo "}"
+
+# Phase 1: always write/reload HTTP (or existing cert) first so ACME + proxy work.
+SSL_CERT_HOST=""
+for candidate in "$DOMAIN" "www.${DOMAIN}"; do
+  if [[ -f "/etc/letsencrypt/live/${candidate}/fullchain.pem" ]]; then
+    SSL_CERT_HOST="$candidate"
+    break
+  fi
+done
+
+write_vhost_file "$OUT"
+ln -sf "$OUT" "$ENABLED_LINK"
+reload_nginx_if_needed
+
+# Phase 2: issue cert only after ACME location is live (critical with root proxies).
+if [[ "$ISSUE_SSL_RESOLVED" == "1" ]] && command -v certbot &>/dev/null; then
+  if [[ ! -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
+    LE_EMAIL="${QADBAK_LE_EMAIL:-${LE_EMAIL:-admin@${DOMAIN}}}"
+    echo "==> TLS: certbot webroot for $DOMAIN (email: $LE_EMAIL)"
+    cert_ok=0
+    if [[ "$INCLUDE_WWW" == "1" ]]; then
+      if certbot certonly --webroot -w "$PUB" -d "$DOMAIN" -d "www.${DOMAIN}" \
+           --non-interactive --agree-tos -m "$LE_EMAIL" --keep-until-expiring; then
+        cert_ok=1
+        echo "    OK — Let's Encrypt cert issued via webroot"
+      fi
     fi
-  else
-    if [[ "$WWW_REDIRECT" == "apex" ]]; then
-      write_site_server 0 "" "$DOMAIN"
-      echo ""
-      echo "server {"
-      echo "    listen 80;"
-      echo "    listen [::]:80;"
-      echo "    server_name www.${DOMAIN};"
-      echo "    return 301 http://${DOMAIN}\$request_uri;"
-      echo "}"
-    else
-      write_site_server 0 "" "${DOMAIN} www.${DOMAIN}"
+    if [[ "$cert_ok" != "1" ]]; then
+      if certbot certonly --webroot -w "$PUB" -d "$DOMAIN" \
+           --non-interactive --agree-tos -m "$LE_EMAIL" --keep-until-expiring; then
+        cert_ok=1
+        echo "    OK — Let's Encrypt cert issued for $DOMAIN"
+      else
+        echo "    WARN — certbot failed for $DOMAIN" >&2
+        echo "    If Cloudflare is orange-clouded: set DNS-only (grey), re-run, then re-enable proxy + Full." >&2
+      fi
+    fi
+    if [[ "$cert_ok" == "1" ]]; then
+      SSL_CERT_HOST="$DOMAIN"
+      write_vhost_file "$OUT"
+      ln -sf "$OUT" "$ENABLED_LINK"
+      reload_nginx_if_needed
     fi
   fi
-} >"$OUT"
-
-ln -sf "$OUT" "$ENABLED_LINK"
-if [[ "${NGINX_BATCH:-}" != "1" ]]; then
-  nginx -t
-  systemctl reload nginx
 fi
+
 if [[ "${HAS_ROOT_PROXY:-0}" == "1" ]]; then
   echo "OK — nginx vhost ${DOMAIN} (reverse proxy root${SSL_CERT_HOST:+, HTTPS})"
 elif [[ "$SITE_MODE" == "static" ]]; then
