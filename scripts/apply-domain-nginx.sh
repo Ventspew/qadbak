@@ -169,7 +169,7 @@ write_common_locations() {
 
 write_site_server() {
   local listen_ssl="$1"
-  local cert_host="${2:-}"
+  local cert_dir="${2:-}"
   local server_names="$3"
 
   echo "server {"
@@ -177,8 +177,8 @@ write_site_server() {
     echo "    listen 443 ssl http2;"
     echo "    listen [::]:443 ssl http2;"
     echo "    server_name ${server_names};"
-    echo "    ssl_certificate     /etc/letsencrypt/live/${cert_host}/fullchain.pem;"
-    echo "    ssl_certificate_key /etc/letsencrypt/live/${cert_host}/privkey.pem;"
+    echo "    ssl_certificate     ${cert_dir}/fullchain.pem;"
+    echo "    ssl_certificate_key ${cert_dir}/privkey.pem;"
   else
     echo "    listen 80;"
     echo "    listen [::]:80;"
@@ -199,17 +199,17 @@ write_vhost_file() {
   local out="$1"
   {
     echo "# Qadbak — ${DOMAIN} (user ${USER}, mode ${SITE_MODE}, root ${PUB})"
-    if [[ -n "$SSL_CERT_HOST" ]]; then
+    if [[ -n "$SSL_CERT_DIR" ]]; then
       if [[ "$WWW_REDIRECT" == "apex" ]]; then
-        write_site_server 1 "$SSL_CERT_HOST" "$DOMAIN"
+        write_site_server 1 "$SSL_CERT_DIR" "$DOMAIN"
         if [[ "$INCLUDE_WWW" == "1" ]]; then
           echo ""
           echo "server {"
           echo "    listen 443 ssl http2;"
           echo "    listen [::]:443 ssl http2;"
           echo "    server_name www.${DOMAIN};"
-          echo "    ssl_certificate     /etc/letsencrypt/live/${SSL_CERT_HOST}/fullchain.pem;"
-          echo "    ssl_certificate_key /etc/letsencrypt/live/${SSL_CERT_HOST}/privkey.pem;"
+          echo "    ssl_certificate     ${SSL_CERT_DIR}/fullchain.pem;"
+          echo "    ssl_certificate_key ${SSL_CERT_DIR}/privkey.pem;"
           echo "    return 301 https://${DOMAIN}\$request_uri;"
           echo "}"
         fi
@@ -228,7 +228,7 @@ write_vhost_file() {
         fi
         echo "}"
       else
-        write_site_server 1 "$SSL_CERT_HOST" "$HTTP_SERVER_NAMES"
+        write_site_server 1 "$SSL_CERT_DIR" "$HTTP_SERVER_NAMES"
         echo ""
         echo "server {"
         echo "    listen 80;"
@@ -263,6 +263,27 @@ write_vhost_file() {
   } >"$out"
 }
 
+ensure_origin_self_signed() {
+  local dir="/etc/qadbak/ssl/${DOMAIN}"
+  mkdir -p "$dir"
+  if [[ -f "$dir/fullchain.pem" && -f "$dir/privkey.pem" ]]; then
+    echo "$dir"
+    return 0
+  fi
+  echo "==> TLS: generating origin self-signed cert for $DOMAIN (Cloudflare Full OK)" >&2
+  openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+    -keyout "$dir/privkey.pem" \
+    -out "$dir/fullchain.pem" \
+    -subj "/CN=${DOMAIN}" \
+    -addext "subjectAltName=DNS:${DOMAIN}" 2>/dev/null \
+  || openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+    -keyout "$dir/privkey.pem" \
+    -out "$dir/fullchain.pem" \
+    -subj "/CN=${DOMAIN}"
+  chmod 640 "$dir/privkey.pem" 2>/dev/null || true
+  echo "$dir"
+}
+
 reload_nginx_if_needed() {
   if [[ "${NGINX_BATCH:-}" != "1" ]]; then
     nginx -t
@@ -274,13 +295,16 @@ OUT="$(nginx_customer_conf_available "$DOMAIN")"
 ENABLED_LINK="$(nginx_customer_conf_enabled "$DOMAIN")"
 
 # Phase 1: always write/reload HTTP (or existing cert) first so ACME + proxy work.
-SSL_CERT_HOST=""
+SSL_CERT_DIR=""
 for candidate in "$DOMAIN" "www.${DOMAIN}"; do
   if [[ -f "/etc/letsencrypt/live/${candidate}/fullchain.pem" ]]; then
-    SSL_CERT_HOST="$candidate"
+    SSL_CERT_DIR="/etc/letsencrypt/live/${candidate}"
     break
   fi
 done
+if [[ -z "$SSL_CERT_DIR" && -f "/etc/qadbak/ssl/${DOMAIN}/fullchain.pem" ]]; then
+  SSL_CERT_DIR="/etc/qadbak/ssl/${DOMAIN}"
+fi
 
 write_vhost_file "$OUT"
 ln -sf "$OUT" "$ENABLED_LINK"
@@ -305,25 +329,34 @@ if [[ "$ISSUE_SSL_RESOLVED" == "1" ]] && command -v certbot &>/dev/null; then
         cert_ok=1
         echo "    OK — Let's Encrypt cert issued for $DOMAIN"
       else
-        echo "    WARN — certbot failed for $DOMAIN" >&2
-        echo "    If Cloudflare is orange-clouded: set DNS-only (grey), re-run, then re-enable proxy + Full." >&2
+        echo "    WARN — certbot failed for $DOMAIN (often Cloudflare orange cloud)" >&2
+        SSL_CERT_DIR="$(ensure_origin_self_signed)"
+        echo "    OK — origin self-signed installed; keep Cloudflare SSL mode Full (not Flexible)" >&2
+        write_vhost_file "$OUT"
+        ln -sf "$OUT" "$ENABLED_LINK"
+        reload_nginx_if_needed
       fi
     fi
     if [[ "$cert_ok" == "1" ]]; then
-      SSL_CERT_HOST="$DOMAIN"
+      SSL_CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
       write_vhost_file "$OUT"
       ln -sf "$OUT" "$ENABLED_LINK"
       reload_nginx_if_needed
     fi
   fi
+elif [[ "$ISSUE_SSL_RESOLVED" == "1" && -z "$SSL_CERT_DIR" ]]; then
+  SSL_CERT_DIR="$(ensure_origin_self_signed)"
+  write_vhost_file "$OUT"
+  ln -sf "$OUT" "$ENABLED_LINK"
+  reload_nginx_if_needed
 fi
 
 if [[ "${HAS_ROOT_PROXY:-0}" == "1" ]]; then
-  echo "OK — nginx vhost ${DOMAIN} (reverse proxy root${SSL_CERT_HOST:+, HTTPS})"
+  echo "OK — nginx vhost ${DOMAIN} (reverse proxy root${SSL_CERT_DIR:+, HTTPS})"
 elif [[ "$SITE_MODE" == "static" ]]; then
-  echo "OK — nginx vhost ${DOMAIN} (static ${PUB}${SSL_CERT_HOST:+, HTTPS})"
+  echo "OK — nginx vhost ${DOMAIN} (static ${PUB}${SSL_CERT_DIR:+, HTTPS})"
 elif php_fpm_pool_available "$USER"; then
-  echo "OK — nginx vhost ${DOMAIN} (PHP-FPM unix:$(php_fpm_socket_path "$USER")${SSL_CERT_HOST:+, HTTPS})"
+  echo "OK — nginx vhost ${DOMAIN} (PHP-FPM unix:$(php_fpm_socket_path "$USER")${SSL_CERT_DIR:+, HTTPS})"
 else
-  echo "OK — nginx vhost ${DOMAIN} (PHP → Apache ${APACHE_BACKEND}${SSL_CERT_HOST:+, HTTPS})"
+  echo "OK — nginx vhost ${DOMAIN} (PHP → Apache ${APACHE_BACKEND}${SSL_CERT_DIR:+, HTTPS})"
 fi
