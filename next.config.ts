@@ -11,9 +11,9 @@ const nextConfig: NextConfig = {
     // Middleware clones request bodies (default 10MB). Large zip uploads were
     // truncated → broken multipart → HTML 500 instead of JSON.
     middlewareClientMaxBodySize: UPLOAD_BODY_LIMIT,
-  },
-  serverActions: {
-    bodySizeLimit: UPLOAD_BODY_LIMIT,
+    serverActions: {
+      bodySizeLimit: UPLOAD_BODY_LIMIT,
+    },
   },
   async rewrites() {
     if (!installSalt) return [];

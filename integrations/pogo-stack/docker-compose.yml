@@ -1,0 +1,191 @@
+name: pogo-stack
+
+networks:
+  pogo-net:
+    driver: bridge
+
+volumes:
+  mariadb_data:
+  golbat_data:
+  koji_data:
+  reactmap_data:
+  redroid_data_1:
+  redroid_data_2:
+
+services:
+  mariadb:
+    image: mariadb:11
+    networks: [pogo-net]
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./services/account-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./config/mariadb/02-databases.sql:/docker-entrypoint-initdb.d/02-databases.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    networks: [pogo-net]
+    restart: unless-stopped
+
+  account-api:
+    build: ./services/account-api
+    networks: [pogo-net]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+pymysql://${DB_USER}:${DB_PASSWORD}@mariadb:3306/${DB_NAME}
+      API_KEY: ${ACCOUNT_API_KEY}
+    ports:
+      - "${ACCOUNT_API_PORT:-4242}:4242"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: ./services/dashboard
+      args:
+        VITE_API_KEY: ${ACCOUNT_API_KEY}
+    networks: [pogo-net]
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-8080}:8080"
+    depends_on:
+      - account-api
+
+  koji:
+    build: ./services/koji
+    networks: [pogo-net]
+    restart: unless-stopped
+    volumes:
+      - koji_data:/data
+    environment:
+      KOJI_BEARER_TOKEN: ${KOJI_BEARER_TOKEN}
+    profiles: ["mapping", "full"]
+
+  golbat:
+    image: ghcr.io/unownhash/golbat:main
+    networks: [pogo-net]
+    restart: unless-stopped
+    volumes:
+      - ./config/rendered/golbat.toml:/config.toml:ro
+      - golbat_data:/data
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    profiles: ["mapping", "full"]
+
+  rotom:
+    build: ./services/rotom-ng
+    networks: [pogo-net]
+    restart: unless-stopped
+    ports:
+      - "7070:7070"
+      - "7071:7071"
+    volumes:
+      - ./config/rotom:/app/config
+    profiles: ["mapping", "full"]
+
+  reactmap:
+    build: ./services/reactmap
+    networks: [pogo-net]
+    restart: unless-stopped
+    volumes:
+      - reactmap_data:/usr/src/app
+      - ./config/rendered/reactmap.local.json:/usr/src/app/config/local.json:ro
+    depends_on:
+      - golbat
+    profiles: ["mapping", "full"]
+
+  poracle:
+    image: ghcr.io/jfberry/poracleng:main
+    networks: [pogo-net]
+    restart: unless-stopped
+    volumes:
+      - ./config/poracle:/app/config
+    depends_on:
+      - golbat
+    profiles: ["mapping", "full"]
+
+  dragonite:
+    build: ./services/dragonite
+    networks: [pogo-net]
+    restart: unless-stopped
+    volumes:
+      - ./services/dragonite/config:/config
+      - ./services/dragonite/binary:/binary:ro
+    depends_on:
+      - rotom
+      - golbat
+      - account-api
+    profiles: ["mapping", "full"]
+
+  redroid-1:
+    image: abing7k/redroid:a11_magisk_arm
+    platform: linux/arm64
+    privileged: true
+    networks: [pogo-net]
+    restart: unless-stopped
+    volumes:
+      - redroid_data_1:/data
+    ports:
+      - "127.0.0.1:5555:5555"
+    command:
+      - androidboot.redroid_gpu_mode=guest
+    profiles: ["workers", "full"]
+
+  redroid-2:
+    image: abing7k/redroid:a11_magisk_arm
+    platform: linux/arm64
+    privileged: true
+    networks: [pogo-net]
+    restart: unless-stopped
+    volumes:
+      - redroid_data_2:/data
+    ports:
+      - "127.0.0.1:5556:5555"
+    command:
+      - androidboot.redroid_gpu_mode=guest
+    profiles: ["workers", "full"]
+
+  worker-agent:
+    build: ./services/worker-agent
+    networks: [pogo-net]
+    restart: unless-stopped
+    environment:
+      REDROID_HOSTS: redroid-1:5555,redroid-2:5555
+      CONFIG_DIR: /configs
+      APK_DIR: /apk
+      PUSH_INTERVAL: ${WORKER_PUSH_INTERVAL:-60}
+    volumes:
+      - ./config/cosmog/rendered:/configs:ro
+      - ./services/cosmog/apk:/apk:ro
+    depends_on:
+      - redroid-1
+      - redroid-2
+      - rotom
+    profiles: ["workers", "full"]
+
+  houndour:
+    build: ./services/houndour
+    networks: [pogo-net]
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      ROTOM_URL: ws://rotom:7070
+      CHECK_INTERVAL: ${HOUNDOUR_INTERVAL:-120}
+      REDROID_CONTAINERS: pogo-stack-redroid-1-1 pogo-stack-redroid-2-1
+    depends_on:
+      - rotom
+      - redroid-1
+    profiles: ["workers", "full"]

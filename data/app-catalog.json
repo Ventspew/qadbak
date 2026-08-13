@@ -307,6 +307,22 @@
     "etaSeconds": 180
   },
   {
+    "id": "pogo-stack",
+    "name": "pogo-stack",
+    "label": "PoGo Stack",
+    "desc": "Pokémon GO account pool, map stack & deviceless workers on this VPS",
+    "version": "0.1",
+    "minPhp": "8.0",
+    "requiresDb": false,
+    "category": "tools",
+    "icon": "⚡",
+    "tagline": "Accounts, map & workers — one click, no phones",
+    "featured": true,
+    "intentMode": "full",
+    "installer": "pogo-stack-install",
+    "etaSeconds": 300
+  },
+  {
     "id": "mybb",
     "name": "mybb",
     "label": "MyBB",

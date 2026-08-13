@@ -1,0 +1,17 @@
+{
+  "database": {
+    "host": "mariadb",
+    "port": 3306,
+    "username": "pogo",
+    "password": "change-me-pogo",
+    "database": "reactmap"
+  },
+  "api": {
+    "reactMapSecret": "change-me-reactmap"
+  },
+  "map": {
+    "general": {
+      "geoJsonFileName": "http://koji:8080/api/v1/geofence/feature-collection/default"
+    }
+  }
+}

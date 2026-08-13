@@ -125,6 +125,11 @@ fi
 run_as_qadbak "cd '$ROOT' && npm install && npm run build"
 bash "$ROOT/scripts/ensure-terminal-deps.sh"
 
+if [[ -f "$ROOT/data/pogo-stack.json" ]] && [[ -f "$ROOT/scripts/lib/pogo-stack-update.sh" ]]; then
+  echo "==> PoGo stack (refresh containers after git sync)"
+  bash "$ROOT/scripts/lib/pogo-stack-update.sh" || echo "    WARN: pogo-stack-update failed" >&2
+fi
+
 if [[ "$(id -u)" -eq 0 ]]; then
   echo "==> Sudo helpers"
   bash "$ROOT/scripts/configure-all-sudo.sh" || echo "    WARN: configure-all-sudo.sh failed" >&2
