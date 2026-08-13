@@ -3,121 +3,280 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Inveil — Qadbak panel &amp; iOS app</title>
+    <title>Inveil - Hosting panel &amp; Apple browser</title>
     <meta
       name="description"
-      content="Inveil builds Qadbak, a self-hosted Linux hosting panel, and the companion iOS app for operators."
+      content="Inveil builds Qadbak, a self-hosted hosting control panel, and Oriel, a native WebKit browser for iPhone, iPad, and Mac. Based in the Netherlands."
     />
     <meta name="theme-color" content="#0f1419" />
+    <link rel="icon" href="/assets/img/favicon.svg?v=4" type="image/svg+xml" />
+    <link rel="canonical" href="https://inveil.net/" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500&display=swap"
       rel="stylesheet"
     />
-    <style>
-      :root {
-        color-scheme: dark;
-        --bg: #0f1419;
-        --text: #e8edf2;
-        --muted: #94a3b8;
-        --accent: #14b8a6;
-        --card: #171d24;
-        --border: #243041;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: "IBM Plex Sans", system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        line-height: 1.6;
-      }
-      a { color: var(--accent); }
-      .wrap { max-width: 720px; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
-      h1 {
-        font-family: Newsreader, Georgia, serif;
-        font-weight: 500;
-        font-size: clamp(2rem, 5vw, 2.6rem);
-        line-height: 1.15;
-        margin: 0.25rem 0 1rem;
-      }
-      .label {
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-size: 0.75rem;
-        color: var(--muted);
-        margin: 0;
-      }
-      .lead { color: var(--muted); font-size: 1.05rem; margin-bottom: 2rem; }
-      .card {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 1.25rem 1.35rem;
-        margin-bottom: 1rem;
-      }
-      .card h2 { font-size: 1.05rem; margin: 0 0 0.5rem; }
-      .card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
-      .links { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
-      .btn {
-        display: inline-block;
-        padding: 0.65rem 1rem;
-        border-radius: 8px;
-        text-decoration: none;
-        font-weight: 600;
-        font-size: 0.92rem;
-      }
-      .btn-primary { background: var(--accent); color: #042f2e; }
-      .btn-secondary { border: 1px solid var(--border); color: var(--text); }
-      footer { margin-top: 3rem; font-size: 0.85rem; color: var(--muted); }
-    </style>
+    <link rel="stylesheet" href="/assets/css/site.css?v=4" />
+    <meta property="og:title" content="Inveil - Hosting panel &amp; Apple browser" />
+    <meta
+      property="og:description"
+      content="Publisher of Qadbak (self-hosted panel) and Oriel (native browser for iOS, iPadOS, and macOS)."
+    />
+    <meta property="og:url" content="https://inveil.net" />
   </head>
   <body>
-    <main class="wrap">
-      <p class="label">Inveil · Netherlands</p>
-      <h1>We build Qadbak and ship the iOS app that talks to it.</h1>
-      <p class="lead">
-        Inveil is the company behind
-        <a href="https://qadbak.com">Qadbak</a> — an open-core hosting panel you install on your own VPS —
-        and the native iPhone/iPad app operators use to manage that panel on the road.
-      </p>
-
-      <div class="card">
-        <h2>Qadbak panel</h2>
-        <p>
-          Domains, mail, DNS, TLS, backups, app store, API, and security tools on Debian 12 or Ubuntu LTS.
-          Source on GitHub. Premium modules (client logins, webmail, offsite backups) via
-          <a href="https://license.inveil.dev">license.inveil.dev</a>.
-        </p>
+    <header class="nav">
+      <div class="container">
+        <div class="nav-inner">
+          <a href="/" class="logo">
+            <img src="/assets/img/logo.svg?v=4" alt="" width="34" height="34" class="logo-mark" />
+            Inveil
+          </a>
+          <nav class="nav-links" aria-label="Main">
+            <a href="#products">Products</a>
+            <a href="#oriel">Oriel</a>
+            <a href="#licensing">Licensing</a>
+            <a href="#company">Company</a>
+            <a href="#contact">Contact</a>
+          </nav>
+          <div class="nav-actions">
+            <a href="https://openoriel.com" class="btn btn-secondary" rel="noopener">Oriel</a>
+            <a href="https://qadbak.com" class="btn btn-secondary" rel="noopener">Qadbak</a>
+            <a href="https://license.inveil.dev/buy" class="btn btn-primary" rel="noopener">Premium</a>
+            <button type="button" class="nav-toggle" aria-label="Menu" aria-expanded="false">☰</button>
+          </div>
+        </div>
+        <nav class="mobile-menu" aria-label="Mobile">
+          <a href="#products">Products</a>
+          <a href="#oriel">Oriel</a>
+          <a href="#licensing">Licensing</a>
+          <a href="#company">Company</a>
+          <a href="#contact">Contact</a>
+          <a href="https://openoriel.com" rel="noopener">Oriel browser</a>
+          <a href="https://qadbak.com" rel="noopener">Qadbak panel</a>
+          <a href="https://license.inveil.dev/buy" rel="noopener">Buy Premium</a>
+        </nav>
       </div>
+    </header>
 
-      <div class="card">
-        <h2>iOS app (TestFlight)</h2>
-        <p>
-          Two modes: connect to your Qadbak panel URL for full hosting control, or add an existing Linux server
-          with the Qadbak agent — including read-only links to HestiaCP, Coolify, and CasaOS.
-          Request a beta seat at
-          <a href="mailto:support@inveil.net">support@inveil.net</a>.
-        </p>
-      </div>
+    <main>
+      <section class="hero">
+        <div class="container hero-grid">
+          <div>
+            <p class="eyebrow">Infrastructure · Netherlands</p>
+            <h1>Software for hosts and a calm view of the web</h1>
+            <p class="lead">
+              Inveil publishes <strong>Qadbak</strong> — a self-hosted control panel for Linux VPS — and
+              <strong>Oriel</strong>, a native WebKit browser for iPhone, iPad, and Mac. Same publisher,
+              two products: own your stack, browse without the chrome noise.
+            </p>
+            <div class="hero-cta">
+              <a href="https://openoriel.com" class="btn btn-primary" rel="noopener">Explore Oriel</a>
+              <a href="https://qadbak.com" class="btn btn-secondary" rel="noopener">Explore Qadbak</a>
+            </div>
+          </div>
+          <aside class="hero-card" aria-label="Highlights">
+            <h2>What we ship</h2>
+            <p>Hosting panel, Premium licensing, and a native Apple browser.</p>
+            <div class="stat-row">
+              <div class="stat">
+                <strong>Qadbak</strong>
+                <span>Hosting panel</span>
+              </div>
+              <div class="stat">
+                <strong>Oriel</strong>
+                <span>iOS · iPadOS · macOS</span>
+              </div>
+              <div class="stat">
+                <strong>Premium</strong>
+                <span>License &amp; webmail</span>
+              </div>
+              <div class="stat">
+                <strong>NL</strong>
+                <span>EU vendor</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
 
-      <div class="card">
-        <h2>Contact</h2>
-        <p>
-          Support: <a href="mailto:support@inveil.net">support@inveil.net</a><br />
-          Privacy: <a href="mailto:privacy@inveil.net">privacy@inveil.net</a><br />
-          Billing: <a href="mailto:billing@inveil.net">billing@inveil.net</a>
-        </p>
-      </div>
+      <section id="products">
+        <div class="container">
+          <p class="section-label">Products</p>
+          <h2 class="section-title">Built for operators and everyday browsing</h2>
+          <p class="section-lead">
+            Everything we publish stays under your control: your VPS for hosting, your devices for
+            browsing. Inveil provides the software and license infrastructure — not shared hosting.
+          </p>
+          <div class="grid-3">
+            <article class="card card-featured">
+              <div class="product-icon">Q</div>
+              <h3>Qadbak panel</h3>
+              <p>
+                Self-hosted control panel: nginx, Apache, MariaDB, Postfix, Dovecot, BIND, PHP-FPM,
+                file manager, terminal, API v1, and 25 one-click apps.
+              </p>
+              <p style="margin-top: 1rem"><a href="https://qadbak.com#install" rel="noopener">Install guide →</a></p>
+            </article>
+            <article class="card">
+              <div class="product-icon">P</div>
+              <h3>Qadbak Premium</h3>
+              <p>
+                Multi-tenant clients, RBAC, Qmail webmail, panel vhosts, live updates, offsite backups,
+                and white-label. Unlocked with a license key on your VPS.
+              </p>
+              <p style="margin-top: 1rem"><a href="https://license.inveil.dev/buy" rel="noopener">View plans →</a></p>
+            </article>
+            <article class="card">
+              <div class="product-icon">iOS</div>
+              <h3>Qadbak Mobile</h3>
+              <p>
+                Native iPhone and iPad companion: domains, DNS, mail, SSL, backups, Qmail, files, and
+                terminal. Connects to your panel over HTTPS.
+              </p>
+              <p style="margin-top: 1rem"><a href="https://qadbak.com#mobile-app" rel="noopener">iOS beta →</a></p>
+            </article>
+          </div>
+        </div>
+      </section>
 
-      <div class="links">
-        <a class="btn btn-primary" href="https://qadbak.com">Qadbak website</a>
-        <a class="btn btn-secondary" href="https://github.com/macdirtycow/qadbak">GitHub</a>
-        <a class="btn btn-secondary" href="https://qadbak.com/privacy">Privacy policy</a>
-      </div>
+      <section id="oriel">
+        <div class="container split">
+          <div>
+            <p class="section-label">New · Browser</p>
+            <h2 class="section-title">Oriel — a calm view of the web</h2>
+            <p class="section-lead" style="margin-bottom: 1rem">
+              A native browser for <strong>iPhone</strong>, <strong>iPad</strong>, and <strong>Mac</strong>,
+              built with Swift, SwiftUI, and WebKit — not a Chromium shell. Process-shared WebKit, system
+              materials, and chrome that stays out of the way.
+            </p>
+            <ul class="list">
+              <li>One app across iOS, iPadOS, and macOS</li>
+              <li>Oriel Shields: EasyList, AdGuard-derived filters, tracker hosts</li>
+              <li>Open source under Apache 2.0</li>
+              <li>Publisher: Inveil · Bundle ID <code>net.inveil.oriel</code></li>
+            </ul>
+            <div class="hero-cta" style="margin-top: 1.25rem">
+              <a href="https://openoriel.com" class="btn btn-primary" rel="noopener">openoriel.com</a>
+              <a href="https://github.com/macdirtycow/openoriel" class="btn btn-secondary" rel="noopener">GitHub</a>
+            </div>
+          </div>
+          <div class="card card-featured">
+            <div class="product-icon">O</div>
+            <h3 style="margin-top: 0">Platforms</h3>
+            <p style="margin-bottom: 1rem">
+              Build with Xcode from the repository, or follow releases on GitHub as App Store builds land.
+            </p>
+            <ul class="list">
+              <li><strong>iPhone</strong> — iOS 17+</li>
+              <li><strong>iPad</strong> — iPadOS 17+</li>
+              <li><strong>Mac</strong> — macOS 14+ (WebExtensions on 15.4+)</li>
+            </ul>
+            <p style="margin-top: 1rem; color: var(--muted); font-size: 0.9rem">
+              Site: <a href="https://openoriel.com" rel="noopener">openoriel.com</a><br />
+              Source: <a href="https://github.com/macdirtycow/openoriel" rel="noopener">macdirtycow/openoriel</a>
+            </p>
+          </div>
+        </div>
+      </section>
 
-      <footer>© 2026 Inveil</footer>
+      <section id="licensing">
+        <div class="container split">
+          <div>
+            <p class="section-label">Licensing</p>
+            <h2 class="section-title">Premium keys &amp; heartbeat</h2>
+            <p class="section-lead" style="margin-bottom: 1rem">
+              Purchase at <a href="https://license.inveil.dev">license.inveil.dev</a>. Activate once in
+              <strong>Server admin → License</strong> on your panel. One VPS per key unless your plan
+              says otherwise.
+            </p>
+            <ul class="list">
+              <li>Stripe subscriptions, monthly through 3-year plans</li>
+              <li>Instant <code>QAD-…</code> key delivery by email</li>
+              <li>Check status or move VPS from the license portal</li>
+              <li>Panel heartbeat, no customer data leaves your server except license metadata</li>
+            </ul>
+          </div>
+          <div class="contact-box">
+            <h3 style="margin-top: 0">License portal</h3>
+            <p class="section-lead" style="margin-bottom: 1rem; font-size: 0.95rem">
+              Buy, check keys, and manage activations for Qadbak Premium.
+            </p>
+            <p><a class="btn btn-primary" href="https://license.inveil.dev/buy" rel="noopener">Open checkout</a></p>
+            <p style="margin-top: 1rem; color: var(--muted); font-size: 0.9rem">
+              Panel setting: <code>QADBAK_LICENSE_SERVER=https://license.inveil.dev</code>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="company">
+        <div class="container split">
+          <div>
+            <p class="section-label">Company</p>
+            <h2 class="section-title">Inveil</h2>
+            <p class="section-lead">
+              We build hosting infrastructure software and privacy-minded Apple apps for people who want
+              modern tools without renting a closed stack: transparent pricing, GDPR-aware defaults, and
+              code that runs on <em>your</em> metal and devices.
+            </p>
+            <ul class="list">
+              <li>Qadbak: <a href="https://qadbak.com" rel="noopener">qadbak.com</a></li>
+              <li>Oriel: <a href="https://openoriel.com" rel="noopener">openoriel.com</a></li>
+              <li>Qadbak source: <a href="https://github.com/macdirtycow/qadbak" rel="noopener">github.com/macdirtycow/qadbak</a></li>
+              <li>Oriel source: <a href="https://github.com/macdirtycow/openoriel" rel="noopener">github.com/macdirtycow/openoriel</a></li>
+              <li>Legal: governed by Netherlands law</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3 style="margin-top: 0">Domains</h3>
+            <p style="color: var(--muted); margin-bottom: 0.75rem">Official endpoints:</p>
+            <ul class="list">
+              <li><strong>inveil.net</strong>: company (this site)</li>
+              <li><strong>openoriel.com</strong>: Oriel browser</li>
+              <li><strong>inveil.dev</strong>: developer / redirects</li>
+              <li><strong>license.inveil.dev</strong>: Premium licensing</li>
+              <li><strong>qadbak.com</strong>: product marketing &amp; demo</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="contact">
+        <div class="container">
+          <p class="section-label">Contact</p>
+          <h2 class="section-title">Get in touch</h2>
+          <div class="contact-box">
+            <dl>
+              <dt>Product support</dt>
+              <dd><a href="mailto:support@inveil.net">support@inveil.net</a></dd>
+              <dt>Sales &amp; billing</dt>
+              <dd><a href="mailto:billing@inveil.net">billing@inveil.net</a></dd>
+              <dt>Privacy</dt>
+              <dd><a href="mailto:privacy@inveil.net">privacy@inveil.net</a></dd>
+              <dt>Security</dt>
+              <dd><a href="mailto:security@inveil.net">security@inveil.net</a></dd>
+              <dt>Legal</dt>
+              <dd><a href="mailto:legal@inveil.net">legal@inveil.net</a></dd>
+            </dl>
+          </div>
+        </div>
+      </section>
     </main>
+
+    <footer class="footer">
+      <div class="container footer-inner">
+        <span>© 2026 Inveil · Qadbak &amp; Oriel</span>
+        <div class="footer-links">
+          <a href="https://openoriel.com" rel="noopener">Oriel</a>
+          <a href="https://qadbak.com" rel="noopener">Qadbak</a>
+          <a href="https://qadbak.com/privacy" rel="noopener">Privacy</a>
+          <a href="https://qadbak.com/terms" rel="noopener">Terms</a>
+          <a href="https://license.inveil.dev" rel="noopener">License portal</a>
+        </div>
+      </div>
+    </footer>
+    <script src="/assets/js/main.js"></script>
   </body>
 </html>

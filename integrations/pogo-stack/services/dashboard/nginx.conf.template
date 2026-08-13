@@ -59,16 +59,26 @@ server {
         set $reactmap_upstream reactmap:8080;
         proxy_pass http://$reactmap_upstream/;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Prefix /map;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 300s;
     }
 
     location /koji/ {
         set $koji_upstream koji:8080;
         proxy_pass http://$koji_upstream/;
         proxy_set_header Host $host;
-        proxy_set_header Connection "";
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Prefix /koji;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 300s;
     }
 
     location / {

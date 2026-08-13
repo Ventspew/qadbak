@@ -7,8 +7,6 @@ networks:
 volumes:
   mariadb_data:
   golbat_data:
-  koji_data:
-  reactmap_data:
   redroid_data_1:
   redroid_data_2:
 
@@ -64,13 +62,17 @@ services:
       - account-api
 
   koji:
-    build: ./services/koji
+    image: ghcr.io/turtiesocks/koji:main
     networks: [pogo-net]
     restart: unless-stopped
-    volumes:
-      - koji_data:/data
     environment:
-      KOJI_BEARER_TOKEN: ${KOJI_BEARER_TOKEN}
+      SCANNER_DB_URL: mysql://${DB_USER}:${DB_PASSWORD}@mariadb:3306/golbat
+      KOJI_DB_URL: mysql://${DB_USER}:${DB_PASSWORD}@mariadb:3306/koji
+      KOJI_SECRET: ${KOJI_BEARER_TOKEN}
+      LOG_LEVEL: info
+    depends_on:
+      mariadb:
+        condition: service_healthy
     profiles: ["mapping", "full"]
 
   golbat:
@@ -83,6 +85,8 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
+      koji:
+        condition: service_started
     profiles: ["mapping", "full"]
 
   rotom:
@@ -97,14 +101,17 @@ services:
     profiles: ["mapping", "full"]
 
   reactmap:
-    build: ./services/reactmap
+    image: ghcr.io/watwowmap/reactmap:main
     networks: [pogo-net]
     restart: unless-stopped
+    command: ["yarn", "start"]
     volumes:
-      - reactmap_data:/usr/src/app
-      - ./config/rendered/reactmap.local.json:/usr/src/app/config/local.json:ro
+      - ./config/rendered/reactmap.local.json:/home/node/server/src/configs/local.json:ro
     depends_on:
-      - golbat
+      mariadb:
+        condition: service_healthy
+      golbat:
+        condition: service_started
     profiles: ["mapping", "full"]
 
   poracle:

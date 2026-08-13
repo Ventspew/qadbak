@@ -247,7 +247,7 @@ async function ensureSafePorts() {
   await writeFile(envPath, body, "utf8");
 }
 
-const MAPPING_SERVICES = ["golbat", "rotom", "reactmap", "poracle", "dragonite", "koji"];
+const MAPPING_SERVICES = ["koji", "golbat", "rotom", "reactmap", "poracle", "dragonite"];
 const WORKER_SERVICES = ["redroid-1", "redroid-2", "worker-agent", "houndour"];
 
 function composeLogPath() {
@@ -313,11 +313,20 @@ async function composeUp(services, profiles = []) {
   await spawnCompose(runner.cmd, args);
 }
 
+async function ensureDatabases() {
+  const script = path.join(POGO_DIR, "scripts", "ensure-databases.sh");
+  if (!(await access(script).then(() => true).catch(() => false))) return;
+  await runStep("Ensure mapping databases", async () => {
+    await exec("bash", [script], { cwd: POGO_DIR, timeout: 60_000 });
+  });
+}
+
 async function startStack(mode) {
   const warnings = [];
   await runStep("Start MariaDB + Redis", async () => {
     await composeUp(["mariadb", "redis"]);
   });
+  await ensureDatabases();
   await runStep("Start account-api", async () => {
     await composeUp(["account-api"]);
   });

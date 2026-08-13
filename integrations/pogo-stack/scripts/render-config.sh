@@ -59,17 +59,46 @@ for i in range(1, count + 1):
 print(f"Rendered {count} Cosmog configs in config/cosmog/rendered/")
 PY
 
-python3 - <<PY
+python3 - <<'PY'
 import json, os, pathlib
+
 src = pathlib.Path("config/reactmap/local.json")
 dst = pathlib.Path("config/rendered/reactmap.local.json")
 data = json.loads(src.read_text())
-db = data.setdefault("database", {})
-db["password"] = os.environ.get("DB_PASSWORD", db.get("password", ""))
-db["username"] = os.environ.get("DB_USER", db.get("username", "pogo"))
-data.setdefault("api", {})["reactMapSecret"] = os.environ.get("REACTMAP_SECRET", "change-me")
+
+user = os.environ.get("DB_USER", "pogo")
+password = os.environ.get("DB_PASSWORD", "change-me-pogo")
+rm_secret = os.environ.get("REACTMAP_SECRET", "change-me-reactmap")
+golbat_secret = os.environ.get("GOLBAT_API_SECRET", "")
+start_lat = float(os.environ.get("MAP_START_LAT", "52.3676"))
+start_lon = float(os.environ.get("MAP_START_LON", "4.9041"))
+
+api = data.setdefault("api", {})
+api["reactMapSecret"] = rm_secret
+api.setdefault("sessionSecret", rm_secret)
+
+general = data.setdefault("map", {}).setdefault("general", {})
+general["startLat"] = start_lat
+general["startLon"] = start_lon
+general.setdefault(
+    "geoJsonFileName",
+    "http://koji:8080/api/v1/geofence/feature-collection/default",
+)
+
+schemas = data.setdefault("database", {}).setdefault("schemas", [])
+for schema in schemas:
+    if schema.get("type") == "golbat":
+        schema["endpoint"] = "http://golbat:9001"
+        schema["secret"] = golbat_secret
+        continue
+    if "host" in schema:
+        schema["host"] = "mariadb"
+        schema["port"] = 3306
+        schema["username"] = user
+        schema["password"] = password
+
 dst.write_text(json.dumps(data, indent=2) + "\n")
-print("Rendered config/reactmap/local.json")
+print("Rendered config/rendered/reactmap.local.json")
 PY
 
 echo "Rendered configs in config/rendered/"
