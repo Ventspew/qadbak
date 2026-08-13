@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, readFileSync } from "node:fs";
 import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { promisify } from "node:util";
@@ -40,7 +40,7 @@ async function runStep(label, fn) {
   try {
     return await fn();
   } catch (e) {
-    fail(`${label} failed: ${execDetail(e).slice(0, 2000)}`);
+    fail(`${label} failed: ${execDetail(e).slice(0, 4000)}`);
   }
 }
 
@@ -205,7 +205,20 @@ async function ensureEnv(mode) {
   emit(`PoGo stack mode: ${mode}`);
 }
 
-const CORE_SERVICES = ["mariadb", "redis", "account-api", "dashboard"];
+async function ensureSafePorts() {
+  const envPath = path.join(POGO_DIR, ".env");
+  let body = await readFile(envPath, "utf8");
+  const dash = body.match(/^DASHBOARD_PORT=(.*)$/m)?.[1]?.trim();
+  const api = body.match(/^ACCOUNT_API_PORT=(.*)$/m)?.[1]?.trim();
+  if (!dash || dash === "8080") {
+    body = upsertEnvLine(body, "DASHBOARD_PORT", "18080");
+  }
+  if (!api || api === "4242") {
+    body = upsertEnvLine(body, "ACCOUNT_API_PORT", "14242");
+  }
+  await writeFile(envPath, body, "utf8");
+}
+
 const MAPPING_SERVICES = ["golbat", "rotom", "reactmap", "poracle", "dragonite", "koji"];
 const WORKER_SERVICES = ["redroid-1", "redroid-2", "worker-agent", "houndour"];
 
@@ -242,9 +255,24 @@ function spawnCompose(cmd, args, timeoutMs = 1_800_000) {
       clearTimeout(timer);
       log.end();
       if (code === 0) resolve(tail);
-      else reject(new Error(`exit ${code}. Last output:\n${tail}`));
+      else reject(new Error(`exit ${code}. ${composeFailureDetail() || `Last output:\n${tail}`}`));
     });
   });
+}
+
+function composeFailureDetail() {
+  try {
+    const raw = readFileSync(composeLogPath(), "utf8");
+    const lines = raw.split("\n");
+    const interesting = lines.filter((line) =>
+      /error|failed|fatal|address already|no space|denied|unhealthy|cannot/i.test(line),
+    );
+    const hits = interesting.slice(-25).join("\n");
+    const tail = lines.slice(-30).join("\n");
+    return `Log:\n${hits || tail}`.slice(-4000);
+  } catch {
+    return "";
+  }
 }
 
 async function composeUp(services, profiles = []) {
@@ -259,8 +287,14 @@ async function composeUp(services, profiles = []) {
 
 async function startStack(mode) {
   const warnings = [];
-  await runStep("Start core stack (MariaDB, Redis, API, dashboard)", async () => {
-    await composeUp(CORE_SERVICES);
+  await runStep("Start MariaDB + Redis", async () => {
+    await composeUp(["mariadb", "redis"]);
+  });
+  await runStep("Start account-api", async () => {
+    await composeUp(["account-api"]);
+  });
+  await runStep("Start dashboard", async () => {
+    await composeUp(["dashboard"]);
   });
   if (mode === "core") return warnings;
 
@@ -340,11 +374,16 @@ export async function pogoStackInstall(domain, payloadJson) {
   await ensureDocker();
   await ensureHostPrep(mode === "full" || mode === "workers");
   await ensureEnv(mode);
+  await ensureSafePorts();
   const { arch, arm } = await applyRedroidArchEnv();
   await renderConfig();
   const warnings = await startStack(mode);
 
-  const dashboardPort = process.env.POGO_DASHBOARD_PORT || "8080";
+  const envBody = await readFile(path.join(POGO_DIR, ".env"), "utf8").catch(() => "");
+  const dashboardPort =
+    envBody.match(/^DASHBOARD_PORT=(.*)$/m)?.[1]?.trim() ||
+    process.env.POGO_DASHBOARD_PORT ||
+    "18080";
   await runStep("Configure reverse proxy", async () => {
     await upsertProxy(pogoHost, "/", `http://127.0.0.1:${dashboardPort}`, true);
     await reloadNginx(pogoHost, user);

@@ -28,9 +28,10 @@ services:
       - ./config/mariadb/02-databases.sql:/docker-entrypoint-initdb.d/02-databases.sql:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 30
+      start_period: 20s
 
   redis:
     image: redis:7-alpine
@@ -45,7 +46,7 @@ services:
       DATABASE_URL: mysql+pymysql://${DB_USER}:${DB_PASSWORD}@mariadb:3306/${DB_NAME}
       API_KEY: ${ACCOUNT_API_KEY}
     ports:
-      - "${ACCOUNT_API_PORT:-4242}:4242"
+      - "127.0.0.1:${ACCOUNT_API_PORT:-14242}:4242"
     depends_on:
       mariadb:
         condition: service_healthy
@@ -58,7 +59,7 @@ services:
     networks: [pogo-net]
     restart: unless-stopped
     ports:
-      - "${DASHBOARD_PORT:-8080}:8080"
+      - "127.0.0.1:${DASHBOARD_PORT:-18080}:8080"
     depends_on:
       - account-api
 
