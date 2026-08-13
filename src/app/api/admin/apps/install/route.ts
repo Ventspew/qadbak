@@ -7,7 +7,12 @@ import {
 } from "@/lib/apps";
 import { startBackgroundAppInstall } from "@/lib/apps/background-job";
 
+export const dynamic = "force-dynamic";
 export const maxDuration = 3600;
+
+export async function GET() {
+  return jsonOk({ ok: true, methods: ["POST"] });
+}
 
 const BACKGROUND_TEMPLATES = new Set(["pogo-stack"]);
 

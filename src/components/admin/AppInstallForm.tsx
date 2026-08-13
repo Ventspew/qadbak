@@ -4,16 +4,34 @@ import { useState } from "react";
 import type { AppInstallResult, AppTemplateSummary } from "@/lib/apps";
 import { Alert, Badge, Button, Card, Input, Label } from "@/components/ui";
 
+async function readApiJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.startsWith("<")) {
+    throw new Error(
+      `Install API returned HTML (HTTP ${res.status}). Update Qadbak and retry, or check /opt/qadbak/data/provisioning-helper.log`,
+    );
+  }
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new Error(trimmed.slice(0, 300) || `HTTP ${res.status}`);
+  }
+}
+
 async function pollInstallJob(jobId: string): Promise<AppInstallResult> {
   const started = Date.now();
   const maxMs = 2_700_000;
   while (Date.now() - started < maxMs) {
     await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch(`/api/admin/apps/install/job?id=${encodeURIComponent(jobId)}`);
-    const data = (await res.json()) as {
+    const res = await fetch(
+      `/api/admin/apps/install-status?id=${encodeURIComponent(jobId)}`,
+      { credentials: "same-origin" },
+    );
+    const data = await readApiJson<{
       job?: { status: string; error?: string; result?: AppInstallResult };
       error?: string;
-    };
+    }>(res);
     if (!res.ok || data.error) {
       throw new Error(data.error ?? `HTTP ${res.status}`);
     }
@@ -52,15 +70,16 @@ export function AppInstallForm({ template }: { template: AppTemplateSummary }) {
     try {
       const res = await fetch("/api/admin/apps/install", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ templateId: template.id, input: values }),
       });
-      const data = (await res.json()) as {
+      const data = await readApiJson<{
         result?: AppInstallResult;
         jobId?: string;
         pending?: boolean;
         error?: string;
-      };
+      }>(res);
       if (!res.ok || data.error) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }

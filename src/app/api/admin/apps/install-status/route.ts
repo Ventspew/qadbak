@@ -5,7 +5,7 @@ import { readInstallJob } from "@/lib/apps/background-job";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** GET /api/admin/apps/install/job?id= */
+/** GET /api/admin/apps/install-status?id= */
 export async function GET(request: Request) {
   try {
     await requireAdmin();
