@@ -129,11 +129,11 @@ qadbak_pkg_install() {
   if qadbak_has_apt; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get install -y -qq "$@"
-    return 0
+    return $?
   fi
   if [[ "$QADBAK_PKG_MGR" == "dnf" ]] && command -v dnf &>/dev/null; then
     dnf install -y "$@"
-    return 0
+    return $?
   fi
   echo "No supported package manager to install: $*" >&2
   return 1

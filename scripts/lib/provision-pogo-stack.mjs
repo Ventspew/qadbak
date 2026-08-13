@@ -74,7 +74,14 @@ async function reloadNginx(domain, user) {
 
 async function ensureDocker() {
   const script = path.join(QADBAK_DIR, "scripts", "lib", "ensure-docker.sh");
-  await exec("bash", [script], { timeout: 600_000 });
+  try {
+    await exec("bash", [script], { timeout: 600_000 });
+  } catch (e) {
+    const stderr = e && typeof e === "object" && "stderr" in e ? String(e.stderr).trim() : "";
+    const stdout = e && typeof e === "object" && "stdout" in e ? String(e.stdout).trim() : "";
+    const msg = e instanceof Error ? e.message : String(e);
+    fail(`Docker is required for PoGo Stack: ${stderr || stdout || msg}`);
+  }
 }
 
 async function ensureHostPrep(workers) {
