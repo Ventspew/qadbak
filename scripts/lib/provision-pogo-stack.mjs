@@ -478,7 +478,6 @@ function buildPostInstall(mode, host, { arch, arm, warnings } = {}) {
     `ReactMap: https://map.${parent}/`,
     `Koji: https://koji.${parent}/`,
     `Add Cloudflare A records for map + koji → same origin IP as pogo (SSL Full).`,
-  ];
     "Add Pokémon GO accounts in the dashboard or via Account API.",
   ];
   if (mode === "full" || mode === "workers") {

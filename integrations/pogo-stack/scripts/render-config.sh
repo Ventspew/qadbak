@@ -80,10 +80,7 @@ api.setdefault("sessionSecret", rm_secret)
 general = data.setdefault("map", {}).setdefault("general", {})
 general["startLat"] = start_lat
 general["startLon"] = start_lon
-general.setdefault(
-    "geoJsonFileName",
-    "http://koji:8080/api/v1/geofence/feature-collection/default",
-)
+general.setdefault("geoJsonFileName", "areas.json")
 
 schemas = data.setdefault("database", {}).setdefault("schemas", [])
 for schema in schemas:
