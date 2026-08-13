@@ -526,6 +526,26 @@ export async function pogoStackStatus() {
 /** Called from update-qadbak.sh when PoGo stack is installed. */
 export async function pogoStackUpdate() {
   const state = await readState();
+  const oneShot = path.join(POGO_DIR, "scripts", "update-pogo-stack.sh");
+  if (await access(oneShot).then(() => true).catch(() => false)) {
+    emit("Running integrations/pogo-stack/scripts/update-pogo-stack.sh");
+    try {
+      await exec("bash", [oneShot], {
+        cwd: POGO_DIR,
+        timeout: 30 * 60_000,
+        env: { ...process.env, QADBAK_DIR },
+      });
+    } catch (e) {
+      emit(`WARN: update-pogo-stack: ${execDetail(e).slice(0, 800)}`);
+    }
+    if (state) {
+      state.updatedAt = new Date().toISOString();
+      await writeState(state);
+    }
+    const result = { updated: true, via: "update-pogo-stack.sh" };
+    emit(result);
+    return result;
+  }
   if (!state) return { updated: false, reason: "not_installed" };
   if (!(await access(POGO_DIR).then(() => true).catch(() => false))) {
     return { updated: false, reason: "missing_stack_dir" };

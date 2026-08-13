@@ -28,6 +28,25 @@ sudo bash /opt/qadbak/integrations/pogo-stack/scripts/setup-qadbak-host.sh
 lsmod | grep binder
 ```
 
+### One-shot update (after `git pull`)
+
+```bash
+cd /opt/qadbak && git pull
+sudo bash integrations/pogo-stack/scripts/update-pogo-stack.sh
+```
+
+Also runs automatically from `sudo bash /opt/qadbak/scripts/update-qadbak.sh` when the PoGo stack is installed.
+
+**APKs are never stored in git.** Either:
+1. Copy `cosmog.apk` + `pogo.apk` once into `services/cosmog/apk/`, or
+2. Host them privately and set in `.env`:
+   ```bash
+   COSMOG_APK_URL=https://your-private-storage/cosmog.apk
+   POGO_APK_URL=https://your-private-storage/pogo.apk
+   COSMOG_TOKEN=...
+   SERVER_PUBLIC_IP=158.220.85.245
+   ```
+
 ### B. Mapping + Dragonite
 ```bash
 cd /opt/qadbak/integrations/pogo-stack
