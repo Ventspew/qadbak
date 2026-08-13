@@ -40,11 +40,14 @@ fi
 qadbak_load_os_release || true
 
 install_compose_plugin() {
-  export DEBIAN_FRONTEND=noninteractive
   apt-get install -y docker-compose-plugin \
     || apt-get install -y docker-compose-v2 \
     || apt-get install -y docker-compose \
-    || echo "WARN: Docker Compose plugin not in apt — docker compose may be unavailable." >&2
+    || return 1
+}
+
+compose_ok() {
+  docker compose version &>/dev/null 2>&1 || docker-compose version &>/dev/null 2>&1
 }
 
 install_docker_official() {
@@ -87,7 +90,11 @@ case "${QADBAK_PKG_MGR:-}" in
       apt-get update -qq || true
     fi
     if apt-get install -y docker.io; then
-      install_compose_plugin
+      install_compose_plugin || true
+      if ! compose_ok; then
+        echo "Compose plugin missing — installing Docker CE (includes compose plugin)" >&2
+        install_docker_official
+      fi
     else
       echo "apt docker.io failed — installing Docker CE from download.docker.com" >&2
       install_docker_official
@@ -114,5 +121,10 @@ fi
 start_docker
 if ! docker info &>/dev/null 2>&1; then
   echo "Docker is installed but the daemon did not start. Check: journalctl -u docker -n 50" >&2
+  exit 1
+fi
+
+if ! compose_ok; then
+  echo "Docker Compose is not available after install. Check: docker compose version" >&2
   exit 1
 fi

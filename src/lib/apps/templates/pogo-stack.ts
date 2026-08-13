@@ -31,7 +31,7 @@ export const pogoStackTemplate: AppTemplate = {
       label: "Stack mode",
       type: "select",
       required: true,
-      defaultValue: "full",
+      defaultValue: "mapping",
       options: [
         { value: "core", label: "Core — account API + dashboard" },
         { value: "mapping", label: "Mapping — core + Golbat, ReactMap, RotomNG" },

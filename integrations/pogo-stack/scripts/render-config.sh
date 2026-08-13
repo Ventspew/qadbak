@@ -17,7 +17,22 @@ set +a
 
 mkdir -p config/rendered
 
-envsubst < config/golbat.toml > config/rendered/golbat.toml
+python3 - <<'PY'
+import os
+import pathlib
+import re
+
+def render_env(path_in: str, path_out: str) -> None:
+    text = pathlib.Path(path_in).read_text()
+
+    def repl(match: re.Match[str]) -> str:
+        return os.environ.get(match.group(1), match.group(0))
+
+    pathlib.Path(path_out).write_text(re.sub(r"\$\{([^}]+)\}", repl, text) + "\n")
+
+render_env("config/golbat.toml", "config/rendered/golbat.toml")
+print("Rendered config/rendered/golbat.toml")
+PY
 
 mkdir -p config/cosmog/rendered
 PUBLIC_IP="${SERVER_PUBLIC_IP:-127.0.0.1}"

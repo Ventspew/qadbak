@@ -111,10 +111,18 @@ export async function runProvisioningHelper(
         throw new Error(parsed.error ?? "Provisioning helper failed");
       }
     }
+    const stderr = err.stderr?.trim() ?? "";
+    const stdoutTail = err.stdout?.trim().split("\n").slice(-8).join("\n").trim() ?? "";
+    if (stderr) {
+      throw new Error(stderr.slice(0, 2000));
+    }
+    if (stdoutTail && err.message?.startsWith("Command failed:")) {
+      throw new Error(stdoutTail.slice(0, 2000));
+    }
     if (err.message && !err.message.startsWith("Command failed:")) {
       throw e instanceof Error ? e : new Error(String(e));
     }
-    const detail = err.stderr?.trim() || err.message || "Provisioning helper failed";
+    const detail = err.message || "Provisioning helper failed";
     throw new Error(detail);
   }
 }

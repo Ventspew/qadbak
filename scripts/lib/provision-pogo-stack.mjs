@@ -22,6 +22,62 @@ const exec = promisify(execFile);
 const POGO_DIR = path.join(QADBAK_DIR, "integrations", "pogo-stack");
 const STATE_PATH = path.join(QADBAK_DIR, "data", "pogo-stack.json");
 
+/** Cached docker compose invocation: `docker compose` or legacy `docker-compose`. */
+let composeRunner = null;
+
+function execDetail(err) {
+  if (!err || typeof err !== "object") {
+    return err instanceof Error ? err.message : String(err);
+  }
+  const stderr = "stderr" in err ? String(err.stderr).trim() : "";
+  const stdout = "stdout" in err ? String(err.stdout).trim() : "";
+  const msg = err instanceof Error ? err.message : String(err);
+  return stderr || stdout || msg;
+}
+
+async function runStep(label, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    fail(`${label} failed: ${execDetail(e).slice(0, 2000)}`);
+  }
+}
+
+async function hostArch() {
+  const { stdout } = await exec("uname", ["-m"], { timeout: 10_000 });
+  return stdout.trim().toLowerCase();
+}
+
+async function assertModeSupported(mode) {
+  const arch = await hostArch();
+  const arm = arch === "aarch64" || arch === "arm64";
+  if ((mode === "full" || mode === "workers") && !arm) {
+    fail(
+      `Stack mode "${mode}" requires ARM64 for Redroid/Cosmog workers (this server is ${arch}). Choose "core" or "mapping" instead.`,
+    );
+  }
+}
+
+async function resolveComposeRunner() {
+  if (composeRunner) return composeRunner;
+  try {
+    await exec("docker", ["compose", "version"], { timeout: 30_000 });
+    composeRunner = { cmd: "docker", prefix: ["compose"] };
+    return composeRunner;
+  } catch {
+    /* try legacy binary */
+  }
+  try {
+    await exec("docker-compose", ["version"], { timeout: 30_000 });
+    composeRunner = { cmd: "docker-compose", prefix: [] };
+    return composeRunner;
+  } catch {
+    fail(
+      "Docker Compose is not installed. Run: sudo bash /opt/qadbak/scripts/lib/ensure-docker.sh",
+    );
+  }
+}
+
 function parsePayload(payloadJson) {
   if (!payloadJson) return {};
   try {
@@ -74,14 +130,10 @@ async function reloadNginx(domain, user) {
 
 async function ensureDocker() {
   const script = path.join(QADBAK_DIR, "scripts", "lib", "ensure-docker.sh");
-  try {
+  await runStep("Docker setup", async () => {
     await exec("bash", [script], { timeout: 600_000 });
-  } catch (e) {
-    const stderr = e && typeof e === "object" && "stderr" in e ? String(e.stderr).trim() : "";
-    const stdout = e && typeof e === "object" && "stdout" in e ? String(e.stdout).trim() : "";
-    const msg = e instanceof Error ? e.message : String(e);
-    fail(`Docker is required for PoGo Stack: ${stderr || stdout || msg}`);
-  }
+  });
+  await resolveComposeRunner();
 }
 
 async function ensureHostPrep(workers) {
@@ -131,24 +183,29 @@ async function composeProfiles(mode) {
 }
 
 async function runCompose(mode, action = "up") {
+  const runner = await resolveComposeRunner();
   const profiles = await composeProfiles(mode);
-  const args = ["compose"];
+  const args = [...runner.prefix];
   for (const p of profiles) {
     args.push("--profile", p);
   }
   if (action === "up") {
     args.push("up", "-d", "--build");
   } else if (action === "pull") {
-    args.push("pull");
+    args.push("pull", "--ignore-buildable");
   } else {
     fail(`Unknown compose action: ${action}`);
   }
-  await exec("docker", args, { cwd: POGO_DIR, timeout: 1_800_000 });
+  await runStep(`docker compose ${action}`, async () => {
+    await exec(runner.cmd, args, { cwd: POGO_DIR, timeout: 1_800_000 });
+  });
 }
 
 async function renderConfig() {
   const script = path.join(POGO_DIR, "scripts", "render-config.sh");
-  await exec("bash", [script], { cwd: POGO_DIR, timeout: 120_000 });
+  await runStep("Render PoGo config", async () => {
+    await exec("bash", [script], { cwd: POGO_DIR, timeout: 120_000 });
+  });
 }
 
 async function ensurePogoSubdomain(parentDomain, user, subPrefix) {
@@ -191,7 +248,10 @@ export async function pogoStackInstall(domain, payloadJson) {
   }
 
   const { user } = await resolveDomainUser(parent);
-  const pogoHost = await ensurePogoSubdomain(parent, user, subPrefix);
+  await assertModeSupported(mode);
+  const pogoHost = await runStep("Create PoGo subdomain", async () =>
+    ensurePogoSubdomain(parent, user, subPrefix),
+  );
 
   await ensureDocker();
   await ensureHostPrep(mode === "full" || mode === "workers");
@@ -201,8 +261,10 @@ export async function pogoStackInstall(domain, payloadJson) {
   await runCompose(mode, "up");
 
   const dashboardPort = process.env.POGO_DASHBOARD_PORT || "8080";
-  await upsertProxy(pogoHost, "/", `http://127.0.0.1:${dashboardPort}`, true);
-  await reloadNginx(pogoHost, user);
+  await runStep("Configure reverse proxy", async () => {
+    await upsertProxy(pogoHost, "/", `http://127.0.0.1:${dashboardPort}`, true);
+    await reloadNginx(pogoHost, user);
+  });
 
   const originIp = process.env.QADBAK_ORIGIN_IP?.trim() || "";
   if (originIp) {
