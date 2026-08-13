@@ -20,7 +20,8 @@ function badge(account: Account) {
 export default function App() {
   const [stats, setStats] = useState<AccountStats | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     auth_service: "ptc",
@@ -31,13 +32,13 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    setError("");
+    setLoadError("");
     try {
       const [nextStats, nextAccounts] = await Promise.all([fetchStats(), fetchAccounts()]);
       setStats(nextStats);
       setAccounts(nextAccounts);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
+      setLoadError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       setLoading(false);
     }
@@ -51,7 +52,7 @@ export default function App() {
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
+    setFormError("");
     try {
       await createAccount({
         auth_service: form.auth_service as "ptc" | "google",
@@ -62,17 +63,17 @@ export default function App() {
       setForm({ auth_service: "ptc", username: "", password: "", notes: "" });
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create account");
+      setFormError(err instanceof Error ? err.message : "Could not create account");
     }
   }
 
   async function onRelease(id: number) {
-    setError("");
+    setFormError("");
     try {
       await releaseAccount(id);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not release account");
+      setFormError(err instanceof Error ? err.message : "Could not release account");
     }
   }
 
@@ -159,7 +160,7 @@ export default function App() {
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             />
           </div>
-          {error ? <p className="error">{error}</p> : null}
+          {formError ? <p className="error">{formError}</p> : null}
           <button type="submit">Save to account pool</button>
         </form>
       </div>
@@ -169,7 +170,7 @@ export default function App() {
           <h2>Accounts</h2>
           <span className="badge idle">{accounts.length} rows</span>
         </div>
-        {error && !accounts.length ? <p className="error">{error}</p> : null}
+        {loadError ? <p className="error">{loadError}</p> : null}
         <table>
           <thead>
             <tr>

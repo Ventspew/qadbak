@@ -17,6 +17,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header Connection "";
+        add_header Cache-Control "no-store" always;
     }
 
     location = /api/docs {
@@ -42,6 +43,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-API-Key $pogo_api_key;
         proxy_set_header Connection "";
+        proxy_request_buffering off;
+        add_header Cache-Control "no-store" always;
     }
 
     location /api/accounts/ {
@@ -53,6 +56,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-API-Key $pogo_api_key;
         proxy_set_header Connection "";
+        proxy_request_buffering off;
+        add_header Cache-Control "no-store" always;
     }
 
     location /map/ {
@@ -83,5 +88,6 @@ server {
 
     location / {
         try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache" always;
     }
 }

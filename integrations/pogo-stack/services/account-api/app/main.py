@@ -23,6 +23,13 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def no_store_api(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 def verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
     if not settings.api_key:
         return

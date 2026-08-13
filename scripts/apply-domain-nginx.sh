@@ -128,11 +128,16 @@ write_common_locations() {
       echo "        proxy_set_header X-Real-IP \$remote_addr;"
       echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
       echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
+      # Avoid Cloudflare Flexible + origin HTTPS-redirect breaking XHR/fetch.
+      echo "        proxy_redirect off;"
+      echo "        add_header Cache-Control \"no-store\" always;"
       if [[ "$pws" == "true" ]]; then
         # Only upgrade when the client asks — never force Connection: upgrade on
         # every request (breaks fetch/XHR to the same location).
         echo "        proxy_set_header Upgrade \$http_upgrade;"
         echo "        proxy_set_header Connection \$connection_upgrade;"
+      else
+        echo "        proxy_set_header Connection \"\";"
       fi
       echo "    }"
     done < <(jq -r 'unique_by(.path) | .[] | [.path,.dest,(.websocket // false)] | @tsv' "$PROXY_JSON" 2>/dev/null)
@@ -214,8 +219,13 @@ write_vhost_file() {
         echo "    listen [::]:80;"
         echo "    server_name ${HTTP_SERVER_NAMES};"
         echo "    root ${PUB};"
-        write_acme_challenge_location
-        echo "    location / { return 301 https://${DOMAIN}\$request_uri; }"
+        echo "    client_max_body_size 100g;"
+        if [[ "${HAS_ROOT_PROXY:-0}" == "1" ]]; then
+          write_common_locations
+        else
+          write_acme_challenge_location
+          echo "    location / { return 301 https://${DOMAIN}\$request_uri; }"
+        fi
         echo "}"
       else
         write_site_server 1 "$SSL_CERT_HOST" "$HTTP_SERVER_NAMES"
@@ -225,8 +235,15 @@ write_vhost_file() {
         echo "    listen [::]:80;"
         echo "    server_name ${HTTP_SERVER_NAMES};"
         echo "    root ${PUB};"
-        write_acme_challenge_location
-        echo "    location / { return 301 https://\$host\$request_uri; }"
+        echo "    client_max_body_size 100g;"
+        # Behind Cloudflare Flexible the edge talks HTTP to origin. Redirecting
+        # that to HTTPS breaks browser fetch/XHR. Serve the same app on :80.
+        if [[ "${HAS_ROOT_PROXY:-0}" == "1" ]]; then
+          write_common_locations
+        else
+          write_acme_challenge_location
+          echo "    location / { return 301 https://\$host\$request_uri; }"
+        fi
         echo "}"
       fi
     else
