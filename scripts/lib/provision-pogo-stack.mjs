@@ -246,8 +246,10 @@ async function ensureEnv(mode) {
       .replace(/change-me-koji-token/g, secret("koji-"))
       .replace(/change-me-poracle/g, secret("por-"))
       .replace(/change-me-reactmap/g, secret("rm-"))
-      .replace(/change-me-cosmog-token/g, secret("cos-"))
-      .replace(/change-me-rotom-secret/g, secret("rot-"));
+      .replace(/change-me-rotom-secret/g, secret("rot-"))
+      .replace(/^GOLBAT_API_SECRET=golbat-secret$/m, `GOLBAT_API_SECRET=${secret("")}`);
+    // COSMOG_TOKEN must stay a real Cosmog license — do not invent one.
+    body = body.replace(/^COSMOG_TOKEN=change-me-cosmog-token$/m, "COSMOG_TOKEN=");
     const originIp = process.env.QADBAK_ORIGIN_IP?.trim();
     if (originIp) {
       body = body.replace(/SERVER_PUBLIC_IP=127\.0\.0\.1/, `SERVER_PUBLIC_IP=${originIp}`);

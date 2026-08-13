@@ -51,6 +51,14 @@ download_apk() {
 log "==> PoGo one-shot update"
 log "    (PoGo/Cosmog APKs are not stored in git — use private URLs or drop files once)"
 
+bash scripts/ensure-secrets.sh || fail "ensure-secrets failed"
+
+# reload env after secrets may have changed
+set -a
+# shellcheck disable=SC1091
+source .env
+set +a
+
 # Optional private APK fetch (you host these; not Qadbak/GitHub)
 download_apk "${COSMOG_APK_URL:-}" "services/cosmog/apk/cosmog.apk" "cosmog.apk" || true
 download_apk "${POGO_APK_URL:-}" "services/cosmog/apk/pogo.apk" "pogo.apk" || true
