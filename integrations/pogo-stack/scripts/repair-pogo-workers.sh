@@ -94,6 +94,7 @@ print("env: REDROID_IMAGE=$REDROID_IMAGE REDROID_INSTANCES=$INSTANCES REDROID_HO
 PY
 
 bash scripts/render-config.sh || exit 1
+docker compose up -d mariadb || warn "mariadb up failed"
 bash scripts/ensure-databases.sh || warn "ensure-databases failed"
 
 missing=0

@@ -352,28 +352,42 @@ function composeFailureDetail() {
   }
 }
 
-async function composeUp(services, profiles = []) {
+async function composeUp(services, profiles = [], { wait = false } = {}) {
   const runner = await resolveComposeRunner();
   const args = [...runner.prefix];
   for (const p of profiles) args.push("--profile", p);
-  args.push("up", "-d", "--build", ...services);
+  args.push("up", "-d");
+  if (wait) {
+    args.push("--wait", "--wait-timeout", "180");
+  }
+  args.push("--build", ...services);
   const label = services.join(", ");
-  emit(`Starting ${label}`);
-  await spawnCompose(runner.cmd, args);
+  emit(`Starting ${label}${wait ? " (wait healthy)" : ""}`);
+  try {
+    await spawnCompose(runner.cmd, args);
+  } catch (e) {
+    if (!wait) throw e;
+    emit(`WARN: compose --wait unsupported or timed out, continuing: ${execDetail(e).slice(0, 240)}`);
+    const fallback = [...runner.prefix];
+    for (const p of profiles) fallback.push("--profile", p);
+    fallback.push("up", "-d", "--build", ...services);
+    await spawnCompose(runner.cmd, fallback);
+  }
 }
 
 async function ensureDatabases() {
   const script = path.join(POGO_DIR, "scripts", "ensure-databases.sh");
   if (!(await access(script).then(() => true).catch(() => false))) return;
+  emit("Waiting for PoGo MariaDB container (not host mysql)");
   await runStep("Ensure mapping databases", async () => {
-    await exec("bash", [script], { cwd: POGO_DIR, timeout: 60_000 });
+    await exec("bash", [script], { cwd: POGO_DIR, timeout: 200_000 });
   });
 }
 
 async function startStack(mode) {
   const warnings = [];
   await runStep("Start MariaDB + Redis", async () => {
-    await composeUp(["mariadb", "redis"]);
+    await composeUp(["mariadb", "redis"], [], { wait: true });
   });
   await ensureDatabases();
   await runStep("Start account-api", async () => {

@@ -63,10 +63,11 @@ else
 fi
 
 bash scripts/render-config.sh || fail "render-config failed"
-bash scripts/ensure-databases.sh || warn "ensure-databases failed"
 
-log "==> Core + mapping"
-"${COMPOSE[@]}" up -d --build mariadb redis account-api dashboard || warn "core up failed"
+log "==> Core (MariaDB first, then mapping DBs)"
+"${COMPOSE[@]}" up -d mariadb redis || warn "mariadb/redis up failed"
+bash scripts/ensure-databases.sh || warn "ensure-databases failed"
+"${COMPOSE[@]}" up -d --build account-api dashboard || warn "core up failed"
 "${COMPOSE[@]}" up -d koji golbat reactmap rotom || warn "mapping up failed"
 "${COMPOSE[@]}" up -d dragonite || warn "dragonite up failed"
 
