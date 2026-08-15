@@ -1,12 +1,12 @@
+import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { runAppInstall } from "./install";
 import type { AppInstallContext, AppInstallResult } from "./types";
 
-const JOB_DIR = process.env.QADBAK_DIR
-  ? path.join(process.env.QADBAK_DIR, "data", "app-jobs")
-  : "/opt/qadbak/data/app-jobs";
+const QADBAK_DIR = process.env.QADBAK_DIR || "/opt/qadbak";
+const JOB_DIR = path.join(QADBAK_DIR, "data", "app-jobs");
 
 export type AppInstallJob = {
   id: string;
@@ -15,6 +15,7 @@ export type AppInstallJob = {
   startedAt: string;
   finishedAt?: string;
   error?: string;
+  lastMessage?: string;
   result?: AppInstallResult;
 };
 
@@ -37,6 +38,22 @@ export async function readInstallJob(id: string): Promise<AppInstallJob | null> 
   }
 }
 
+function spawnDetachedWorker(jobId: string): boolean {
+  const worker = path.join(QADBAK_DIR, "scripts", "run-app-install-job.mjs");
+  try {
+    const child = spawn(process.execPath, [worker, jobId], {
+      detached: true,
+      stdio: "ignore",
+      cwd: QADBAK_DIR,
+      env: { ...process.env, QADBAK_DIR },
+    });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function startBackgroundAppInstall(opts: {
   templateId: string;
   rawInput: Record<string, unknown>;
@@ -48,8 +65,26 @@ export async function startBackgroundAppInstall(opts: {
     status: "running",
     templateId: opts.templateId,
     startedAt: new Date().toISOString(),
+    lastMessage: "Queued",
   };
   await writeInstallJob(job);
+  await writeFile(
+    path.join(JOB_DIR, `${id}.input.json`),
+    `${JSON.stringify(
+      {
+        templateId: opts.templateId,
+        rawInput: opts.rawInput,
+        session: { username: opts.session.username, role: opts.session.role },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  if (spawnDetachedWorker(id)) {
+    return id;
+  }
 
   void runAppInstall(opts)
     .then(async (result) => {

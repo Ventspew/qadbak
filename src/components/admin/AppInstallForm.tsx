@@ -1,48 +1,103 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AppInstallResult, AppTemplateSummary } from "@/lib/apps";
+import { apiPath } from "@/lib/install-salt";
 import { Alert, Badge, Button, Card, Input, Label } from "@/components/ui";
 
-async function readApiJson<T>(res: Response): Promise<T> {
-  const text = await res.text();
-  const trimmed = text.trim();
-  if (!trimmed || trimmed.startsWith("<")) {
-    throw new Error(
-      `Install API returned HTML (HTTP ${res.status}). Update Qadbak and retry, or check /opt/qadbak/data/provisioning-helper.log`,
-    );
-  }
-  try {
-    return JSON.parse(trimmed) as T;
-  } catch {
-    throw new Error(trimmed.slice(0, 300) || `HTTP ${res.status}`);
-  }
+const GATEWAY_HINT =
+  "Panel unreachable (HTTP 502 HTML). Install may still be running in the background. Wait, refresh this page, or run: sudo -u qadbak pm2 list && tail -n 80 /opt/qadbak/data/provisioning-helper.log";
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-async function pollInstallJob(jobId: string): Promise<AppInstallResult> {
+function isGatewayHtml(status: number, text: string) {
+  const trimmed = text.trim();
+  return (
+    !trimmed ||
+    trimmed.startsWith("<") ||
+    status === 502 ||
+    status === 503 ||
+    status === 504
+  );
+}
+
+async function readApiJson<T>(
+  doFetch: () => Promise<Response>,
+  { retries = 8, retryHtml = true } = {},
+): Promise<{ res: Response; data: T }> {
+  let lastErr: Error | null = null;
+  for (let i = 0; i < retries; i += 1) {
+    try {
+      const res = await doFetch();
+      const text = await res.text();
+      if (isGatewayHtml(res.status, text) && (!text.trim() || text.trim().startsWith("<"))) {
+        lastErr = new Error(GATEWAY_HINT);
+        if (!retryHtml) throw lastErr;
+        await sleep(Math.min(15_000, 2000 * (i + 1)));
+        continue;
+      }
+      try {
+        return { res, data: JSON.parse(text.trim()) as T };
+      } catch {
+        throw new Error(text.trim().slice(0, 300) || `HTTP ${res.status}`);
+      }
+    } catch (e) {
+      if (e instanceof TypeError) {
+        lastErr = new Error(GATEWAY_HINT);
+        await sleep(Math.min(15_000, 2000 * (i + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr ?? new Error(GATEWAY_HINT);
+}
+
+async function pollInstallJob(
+  jobId: string,
+  onStatus?: (message: string) => void,
+): Promise<AppInstallResult> {
   const started = Date.now();
   const maxMs = 2_700_000;
   while (Date.now() - started < maxMs) {
-    await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch(
-      `/api/admin/apps/install-status?id=${encodeURIComponent(jobId)}`,
-      { credentials: "same-origin" },
-    );
-    const data = await readApiJson<{
-      job?: { status: string; error?: string; result?: AppInstallResult };
+    await sleep(2000);
+    const { res, data } = await readApiJson<{
+      job?: {
+        status: string;
+        error?: string;
+        lastMessage?: string;
+        result?: AppInstallResult;
+      };
       error?: string;
-    }>(res);
+    }>(() =>
+      fetch(apiPath(`/admin/apps/install-status?id=${encodeURIComponent(jobId)}`), {
+        credentials: "same-origin",
+        cache: "no-store",
+      }),
+    );
     if (!res.ok || data.error) {
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        onStatus?.("Panel briefly unreachable — retrying status…");
+        continue;
+      }
       throw new Error(data.error ?? `HTTP ${res.status}`);
     }
+    if (data.job?.lastMessage) onStatus?.(data.job.lastMessage);
     if (data.job?.status === "ok" && data.job.result) return data.job.result;
     if (data.job?.status === "error") {
       throw new Error(data.job.error || "PoGo Stack install failed.");
     }
+    onStatus?.(data.job?.lastMessage || "Installing in background…");
   }
   throw new Error(
     "Install is still running. Check Journal or /opt/qadbak/data/provisioning-helper.log",
   );
+}
+
+function jobStorageKey(templateId: string) {
+  return `qadbak-app-install-job:${templateId}`;
 }
 
 export function AppInstallForm({ template }: { template: AppTemplateSummary }) {
@@ -59,33 +114,55 @@ export function AppInstallForm({ template }: { template: AppTemplateSummary }) {
     return out;
   });
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AppInstallResult | null>(null);
+
+  async function followJob(jobId: string) {
+    sessionStorage.setItem(jobStorageKey(template.id), jobId);
+    setProgress("Install started in background…");
+    const installed = await pollInstallJob(jobId, setProgress);
+    sessionStorage.removeItem(jobStorageKey(template.id));
+    setResult(installed);
+  }
+
+  useEffect(() => {
+    const existing = sessionStorage.getItem(jobStorageKey(template.id));
+    if (!existing) return;
+    setLoading(true);
+    setError(null);
+    followJob(existing)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false));
+    // Resume a job that survived a 502 / page refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template.id]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setResult(null);
+    setProgress("Starting install…");
     try {
-      const res = await fetch("/api/admin/apps/install", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId: template.id, input: values }),
-      });
-      const data = await readApiJson<{
+      const { res, data } = await readApiJson<{
         result?: AppInstallResult;
         jobId?: string;
         pending?: boolean;
         error?: string;
-      }>(res);
+      }>(() =>
+        fetch(apiPath("/admin/apps/install"), {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ templateId: template.id, input: values }),
+        }),
+      );
       if (!res.ok || data.error) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
       if (data.jobId) {
-        const result = await pollInstallJob(data.jobId);
-        setResult(result);
+        await followJob(data.jobId);
         return;
       }
       if (data.result) setResult(data.result);
@@ -104,6 +181,9 @@ export function AppInstallForm({ template }: { template: AppTemplateSummary }) {
     <Card>
       <form onSubmit={submit} className="space-y-4">
         {error ? <Alert variant="error">{error}</Alert> : null}
+        {loading && progress ? (
+          <p className="text-sm text-panel-muted">{progress}</p>
+        ) : null}
         {template.inputs.map((field) => (
           <div key={field.name}>
             <Label htmlFor={`f-${field.name}`}>
@@ -176,8 +256,8 @@ export function AppInstallForm({ template }: { template: AppTemplateSummary }) {
           </Button>
           {template.etaSeconds ? (
             <span className="text-xs text-panel-muted">
-              Usually ~{Math.ceil(template.etaSeconds / 60)} min · one journaled
-              operation
+              Usually ~{Math.ceil(template.etaSeconds / 60)} min · runs in the
+              background so the panel stays up
             </span>
           ) : null}
         </div>
