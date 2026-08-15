@@ -9,6 +9,10 @@ server {
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
+    # Container listens on 8080; never leak that port into Location
+    # (Cloudflare 521 if the browser follows http://host:8080/).
+    absolute_redirect off;
+    port_in_redirect off;
 
     location = /internal/auth-verify {
         internal;

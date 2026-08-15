@@ -128,8 +128,13 @@ write_common_locations() {
       echo "        proxy_set_header X-Real-IP \$remote_addr;"
       echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
       echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
-      # Avoid Cloudflare Flexible + origin HTTPS-redirect breaking XHR/fetch.
-      echo "        proxy_redirect off;"
+      # Keep Location on the public host/HTTPS. Upstream apps that listen on
+      # 8080/18080 otherwise leak those ports (Cloudflare 521 on :8080).
+      echo "        proxy_redirect http://\$host:8080/ /;"
+      echo "        proxy_redirect http://\$host:18080/ /;"
+      echo "        proxy_redirect http://\$host:8080/login /login;"
+      echo "        proxy_redirect https://\$host:8080/ /;"
+      echo "        proxy_redirect https://\$host:18080/ /;"
       echo "        add_header Cache-Control \"no-store\" always;"
       if [[ "$pws" == "true" ]]; then
         # Only upgrade when the client asks — never force Connection: upgrade on
