@@ -84,7 +84,7 @@ function rememberSteps(stdout: string): void {
 }
 
 function helperTimeoutMs(command: string): number {
-  if (command === "jellyfin-install") {
+  if (command.startsWith("pogo-stack-") || command === "jellyfin-install") {
     return 2_700_000;
   }
   return 600_000;

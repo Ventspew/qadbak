@@ -307,6 +307,22 @@
     "etaSeconds": 180
   },
   {
+    "id": "pogo-stack",
+    "name": "pogo-stack",
+    "label": "PoGo Stack",
+    "desc": "Pokémon GO account pool, map stack, Android Cosmog and jailbroken iPhone workers",
+    "version": "0.2",
+    "minPhp": "8.0",
+    "requiresDb": false,
+    "category": "tools",
+    "icon": "⚡",
+    "tagline": "Accounts, map, Android & iPhone workers",
+    "featured": true,
+    "intentMode": "full",
+    "installer": "pogo-stack-install",
+    "etaSeconds": 1800
+  },
+  {
     "id": "mybb",
     "name": "mybb",
     "label": "MyBB",

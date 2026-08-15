@@ -1,0 +1,19 @@
+# Place Dragonite config here after running install-dragonite.sh
+# See docs/QADBAK-DEPLOY.md
+
+[auth]
+# bearer_token = "change-me"
+
+[database]
+# host = "mariadb"
+# port = 3306
+
+[rotom]
+# endpoint = "ws://rotom:7071"
+# secret = "change-me-rotom-secret"
+
+[golbat]
+# endpoint = "http://golbat:9001"
+
+[accounts]
+# sync_from = "http://account-api:4242"

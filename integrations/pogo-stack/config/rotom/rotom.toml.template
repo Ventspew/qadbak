@@ -1,0 +1,21 @@
+# Rendered by scripts/render-config.sh — do not edit config/rendered/rotom.toml by hand.
+
+[device_listener]
+address = ":7070"
+secret = "${ROTOM_SECRET}"
+
+[controller_listener]
+address = ":7071"
+secret = "${ROTOM_SECRET}"
+
+[http_listener]
+address = ":7072"
+secret = "${ROTOM_SECRET}"
+
+[logging]
+level = "info"
+format = "plain"
+
+[jobs]
+enable = false
+path = "./jobs"

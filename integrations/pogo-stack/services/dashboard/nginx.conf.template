@@ -1,0 +1,181 @@
+upstream account_api {
+    server account-api:4242;
+}
+
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location = /internal/auth-verify {
+        internal;
+        proxy_pass http://account_api/auth/verify;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+    }
+
+    location = /api/health {
+        proxy_pass http://account_api/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+    }
+
+    location /api/auth/ {
+        proxy_pass http://account_api/auth/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+    }
+
+    location = /api/docs {
+        auth_request /internal/auth-verify;
+        error_page 401 = @api_unauth;
+        proxy_pass http://account_api/docs;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header Connection "";
+    }
+
+    location = /api/openapi.json {
+        auth_request /internal/auth-verify;
+        error_page 401 = @api_unauth;
+        proxy_pass http://account_api/openapi.json;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header Connection "";
+    }
+
+    location = /api/accounts {
+        auth_request /internal/auth-verify;
+        error_page 401 = @api_unauth;
+        proxy_pass http://account_api/account;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+    }
+
+    location /api/accounts/ {
+        auth_request /internal/auth-verify;
+        error_page 401 = @api_unauth;
+        proxy_pass http://account_api/account/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+    }
+
+    location = /api/devices {
+        auth_request /internal/auth-verify;
+        error_page 401 = @api_unauth;
+        proxy_pass http://account_api/devices;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header Connection "";
+        proxy_read_timeout 20s;
+    }
+
+    location /api/devices/ {
+        auth_request /internal/auth-verify;
+        error_page 401 = @api_unauth;
+        proxy_pass http://account_api/devices/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header Connection "";
+        proxy_read_timeout 20s;
+    }
+
+    location /rotom/ {
+        auth_request /internal/auth-verify;
+        error_page 401 = @go_login;
+        set $rotom_upstream rotom:7072;
+        proxy_pass http://$rotom_upstream/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Prefix /rotom;
+        proxy_set_header X-Rotom-Secret "${ROTOM_SECRET}";
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 300s;
+    }
+
+    location /map/ {
+        auth_request /internal/auth-verify;
+        error_page 401 = @go_login;
+        set $reactmap_upstream reactmap:8080;
+        proxy_pass http://$reactmap_upstream/;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Prefix /map;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 300s;
+    }
+
+    location /koji/ {
+        auth_request /internal/auth-verify;
+        error_page 401 = @go_login;
+        set $koji_upstream koji:8080;
+        proxy_pass http://$koji_upstream/;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Prefix /koji;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 300s;
+    }
+
+    location /assets/ {
+        try_files $uri =404;
+    }
+
+    location = /login {
+        try_files /index.html =404;
+    }
+
+    location / {
+        auth_request /internal/auth-verify;
+        error_page 401 = @go_login;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location @go_login {
+        return 302 /login;
+    }
+
+    location @api_unauth {
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        return 401 '{"detail":"Not authenticated"}';
+    }
+}

@@ -32,6 +32,7 @@ const FALLBACK_ICONS: Record<string, string> = {
   osticket: "🎫",
   processwire: "⚙️",
   jellyfin: "🎬",
+  "pogo-stack": "⚡",
 };
 
 function normalizeRow(row: Record<string, unknown>): AppCatalogEntry {
@@ -74,6 +75,6 @@ export function catalogEntriesWithIntent(
   entries: AppCatalogEntry[],
 ): AppCatalogEntry[] {
   return entries.filter(
-    (e) => !e.comingSoon && e.intentMode !== "domain-only" && e.id !== "wordpress" && e.id !== "jellyfin",
+    (e) => !e.comingSoon && e.intentMode !== "domain-only" && e.id !== "wordpress" && e.id !== "jellyfin" && e.id !== "pogo-stack",
   );
 }

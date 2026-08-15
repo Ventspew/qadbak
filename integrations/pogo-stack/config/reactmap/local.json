@@ -1,0 +1,80 @@
+{
+  "interface": "0.0.0.0",
+  "port": 8080,
+  "api": {
+    "sessionSecret": "change-me-reactmap-session",
+    "reactMapSecret": "change-me-reactmap",
+    "maxSessions": 25
+  },
+  "map": {
+    "general": {
+      "title": "PoGo Map",
+      "headerTitle": "PoGo Map",
+      "startLat": 52.3676,
+      "startLon": 4.9041,
+      "startZoom": 12,
+      "minZoom": 3,
+      "maxZoom": 18,
+      "geoJsonFileName": "http://koji:8080/api/v1/geofence/feature-collection/default"
+    }
+  },
+  "database": {
+    "schemas": [
+      {
+        "note": "Golbat scanner database",
+        "host": "mariadb",
+        "port": 3306,
+        "username": "pogo",
+        "password": "change-me-pogo",
+        "database": "golbat",
+        "useFor": [
+          "gym",
+          "pokestop",
+          "scanCell",
+          "spawnpoint",
+          "weather",
+          "route",
+          "nest"
+        ]
+      },
+      {
+        "note": "Golbat in-memory pokemon/device API",
+        "type": "golbat",
+        "endpoint": "http://golbat:9001",
+        "secret": "",
+        "useFor": ["pokemon", "device"]
+      },
+      {
+        "note": "ReactMap own database",
+        "host": "mariadb",
+        "port": 3306,
+        "username": "pogo",
+        "password": "change-me-pogo",
+        "database": "reactmap",
+        "useFor": ["user"]
+      }
+    ]
+  },
+  "authentication": {
+    "strategies": [],
+    "alwaysEnabledPerms": [
+      "map",
+      "pokemon",
+      "iv",
+      "pvp",
+      "gyms",
+      "raids",
+      "pokestops",
+      "eventStops",
+      "quests",
+      "lures",
+      "nests",
+      "weather",
+      "spawnpoints",
+      "scanCells",
+      "devices",
+      "scanAreas",
+      "routes"
+    ]
+  }
+}

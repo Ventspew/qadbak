@@ -1,0 +1,15 @@
+{
+  "device_id": "DEVICE_ID",
+  "rotom_worker_endpoint": "ROTOM_PUBLIC_WS",
+  "rotom_device_endpoint": "ROTOM_PUBLIC_WS/control",
+  "use_local_safetynet": true,
+  "public_ip": "SERVER_PUBLIC_IP",
+  "workers": 8,
+  "token": "COSMOG_TOKEN",
+  "rotom_secret": "ROTOM_SECRET",
+  "injection_delay_ms": 5000,
+  "pogo_heartbeat_timeout_ms": 30000,
+  "concurrent_login_override": 1,
+  "worker_spawn_delay_override": 12500,
+  "disable_attest_delay": false
+}

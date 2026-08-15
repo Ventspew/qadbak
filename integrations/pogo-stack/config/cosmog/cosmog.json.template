@@ -1,0 +1,14 @@
+{
+  "device_id": "redroid-INSTANCE",
+  "rotom_worker_endpoint": "ws://rotom:7070",
+  "rotom_device_endpoint": "ws://rotom:7070/control",
+  "use_local_safetynet": false,
+  "public_ip": "SERVER_PUBLIC_IP",
+  "workers": 17,
+  "token": "COSMOG_TOKEN",
+  "rotom_secret": "ROTOM_SECRET",
+  "injection_delay_ms": 5000,
+  "pogo_heartbeat_timeout_ms": 30000,
+  "concurrent_login_override": 6,
+  "worker_spawn_delay_override": 3500
+}
