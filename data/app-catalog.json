@@ -307,6 +307,22 @@
     "etaSeconds": 180
   },
   {
+    "id": "minecraft",
+    "name": "minecraft",
+    "label": "Minecraft Java",
+    "desc": "Java Edition server — pick Vanilla, Paper plugins, Fabric/Forge mods, Create or Cobblemon",
+    "version": "java21",
+    "minPhp": "8.0",
+    "requiresDb": false,
+    "category": "tools",
+    "icon": "⛏️",
+    "tagline": "One-click Java server with mods or plugins",
+    "featured": true,
+    "intentMode": "full",
+    "installer": "minecraft-install",
+    "etaSeconds": 240
+  },
+  {
     "id": "pogo-stack",
     "name": "pogo-stack",
     "label": "PoGo Stack",

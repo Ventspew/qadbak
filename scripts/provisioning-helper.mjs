@@ -142,6 +142,7 @@ import {
 } from "./lib/cloud-credentials.mjs";
 import { appInstallWordpress } from "./lib/provision-app-wordpress.mjs";
 import { jellyfinInstall, jellyfinListVideos, jellyfinSetMediaPath, jellyfinStatus, jellyfinStreamResolve } from "./lib/provision-jellyfin.mjs";
+import { minecraftInstall, minecraftStatus } from "./lib/provision-minecraft.mjs";
 import { pogoStackInstall, pogoStackStatus, pogoStackUpdate } from "./lib/provision-pogo-stack.mjs";
 import {
   securityGet,
@@ -598,6 +599,12 @@ async function main() {
       break;
     case "jellyfin-stream-resolve":
       await jellyfinStreamResolve(args[0], args[1]);
+      break;
+    case "minecraft-install":
+      await minecraftInstall(args[0], args[1]);
+      break;
+    case "minecraft-status":
+      await minecraftStatus(args[0]);
       break;
     case "pogo-stack-install":
       await pogoStackInstall(args[0], args[1]);

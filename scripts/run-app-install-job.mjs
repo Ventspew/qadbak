@@ -89,7 +89,7 @@ function runHelper(args) {
   });
 }
 
-function pogoResult(input, helper) {
+function pogoResult(jobId, input, helper) {
   const domain = String(input.domain || "").trim();
   const subdomain = String(input.subdomain || "pogo").trim() || "pogo";
   const host = helper.pogoHost || `${subdomain}.${domain}`;
@@ -130,6 +130,74 @@ function pogoResult(input, helper) {
   };
 }
 
+function minecraftResult(jobId, input, helper) {
+  const domain = String(input.domain || "").trim();
+  const subdomain = String(input.subdomain || "mc").trim() || "mc";
+  const host = helper.subdomain || `${subdomain}.${domain}`;
+  const credentials = [
+    {
+      label: "Join address (Java Edition)",
+      value: helper.joinAddress || host,
+      isSecret: false,
+    },
+  ];
+  if (helper.dataDir) {
+    credentials.push({
+      label: "Mods / plugins folder",
+      value: helper.dataDir,
+      isSecret: false,
+    });
+  }
+  if (helper.rconPassword) {
+    credentials.push({
+      label: "RCON password",
+      value: helper.rconPassword,
+      isSecret: true,
+    });
+  }
+  const postInstall = Array.isArray(helper.postInstall)
+    ? helper.postInstall.join(" ")
+    : helper.postInstall;
+  return {
+    appId: "minecraft",
+    domain,
+    primaryUrl: helper.adminUrl || `https://${host}/`,
+    credentials,
+    postInstall,
+    journalId: jobId,
+  };
+}
+
+const TEMPLATES = {
+  "pogo-stack": {
+    message: "Starting PoGo Stack install (detached from panel)",
+    helperArgs: (input) => [
+      "pogo-stack-install",
+      String(input.domain || "").trim(),
+      JSON.stringify({
+        subdomain: String(input.subdomain || "pogo").trim() || "pogo",
+        mode: String(input.mode || "phones").trim() || "phones",
+      }),
+    ],
+    result: pogoResult,
+  },
+  minecraft: {
+    message: "Starting Minecraft Java server (detached from panel)",
+    helperArgs: (input) => [
+      "minecraft-install",
+      String(input.domain || "").trim(),
+      JSON.stringify({
+        subdomain: String(input.subdomain || "mc").trim() || "mc",
+        pack: String(input.pack || "paper").trim() || "paper",
+        memory: String(input.memory || "4G").trim() || "4G",
+        onlineMode: input.onlineMode,
+        extraMods: String(input.extraMods || "").trim(),
+      }),
+    ],
+    result: minecraftResult,
+  },
+};
+
 const jobFile = path.join(JOB_DIR, `${jobId}.json`);
 const inputFile = path.join(JOB_DIR, `${jobId}.input.json`);
 
@@ -138,26 +206,20 @@ try {
   job = await readJson(jobFile);
   const payload = await readJson(inputFile);
   const input = payload.rawInput || {};
-  job.lastMessage = "Starting PoGo Stack install (detached from panel)";
-  await writeJob(job);
-
-  if (payload.templateId !== "pogo-stack") {
+  const spec = TEMPLATES[payload.templateId];
+  if (!spec) {
     throw new Error(`Unsupported background template: ${payload.templateId}`);
   }
+  job.lastMessage = spec.message;
+  await writeJob(job);
+
   const domain = String(input.domain || "").trim();
   if (!domain) throw new Error("domain is required");
-  const helper = await runHelper([
-    "pogo-stack-install",
-    domain,
-    JSON.stringify({
-      subdomain: String(input.subdomain || "pogo").trim() || "pogo",
-      mode: String(input.mode || "phones").trim() || "phones",
-    }),
-  ]);
+  const helper = await runHelper(spec.helperArgs(input));
   job.status = "ok";
   job.finishedAt = new Date().toISOString();
   job.lastMessage = "Install finished";
-  job.result = pogoResult(input, helper);
+  job.result = spec.result(jobId, input, helper);
   await writeJob(job);
 } catch (err) {
   const message = err instanceof Error ? err.message : String(err);

@@ -134,6 +134,8 @@ malware-quarantine-list
 malware-scan
 malware-schedule-set
 malware-status
+minecraft-install
+minecraft-status
 memcached-get
 memcached-set
 metrics-snapshot
