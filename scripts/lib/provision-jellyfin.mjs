@@ -45,7 +45,7 @@ async function uidGid(user) {
 
 async function ensureDocker() {
   const script = path.join(QADBAK_DIR, "scripts", "lib", "ensure-docker.sh");
-  if (!(await access(script).catch(() => false))) {
+  if (!(await access(script).then(() => true).catch(() => false))) {
     fail(`Missing ${script}`);
   }
   try {

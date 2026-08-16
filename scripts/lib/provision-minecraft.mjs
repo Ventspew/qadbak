@@ -187,7 +187,9 @@ async function uidGid(user) {
 
 async function ensureDocker() {
   const script = path.join(QADBAK_DIR, "scripts", "lib", "ensure-docker.sh");
-  if (!(await access(script).catch(() => false))) fail(`Missing ${script}`);
+  if (!(await access(script).then(() => true).catch(() => false))) {
+    fail(`Missing ${script}`);
+  }
   try {
     await exec("bash", [script], { timeout: 600_000 });
   } catch (e) {
@@ -197,7 +199,7 @@ async function ensureDocker() {
 
 async function openFirewall(port) {
   const script = path.join(QADBAK_DIR, "scripts", "open-host-firewall-port.sh");
-  if (!(await access(script).catch(() => false))) return;
+  if (!(await access(script).then(() => true).catch(() => false))) return;
   await exec("bash", [script, String(port)], { timeout: 30_000 }).catch(() => {
     emit(`WARN: could not open host firewall TCP ${port}`);
   });
