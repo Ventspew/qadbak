@@ -87,7 +87,7 @@ async function pollInstallJob(
     if (data.job?.lastMessage) onStatus?.(data.job.lastMessage);
     if (data.job?.status === "ok" && data.job.result) return data.job.result;
     if (data.job?.status === "error") {
-      throw new Error(data.job.error || "PoGo Stack install failed.");
+      throw new Error(data.job.error || "Install failed.");
     }
     onStatus?.(data.job?.lastMessage || "Installing in background…");
   }

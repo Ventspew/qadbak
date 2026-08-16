@@ -84,11 +84,7 @@ function rememberSteps(stdout: string): void {
 }
 
 function helperTimeoutMs(command: string): number {
-  if (
-    command.startsWith("pogo-stack-") ||
-    command === "jellyfin-install" ||
-    command.startsWith("minecraft-")
-  ) {
+  if (command === "jellyfin-install" || command.startsWith("minecraft-")) {
     return 2_700_000;
   }
   return 600_000;
@@ -114,7 +110,7 @@ function formatHelperFailure(err: {
       .join("\n")
       .trim() ?? "";
   if (err.killed || err.signal === "SIGTERM") {
-    return `PoGo/provisioning helper timed out. Last output: ${
+    return `Provisioning helper timed out. Last output: ${
       stderr || stdoutTail || "no output (docker build may still be running)"
     }`.slice(0, 2000);
   }
@@ -125,7 +121,7 @@ function formatHelperFailure(err: {
   }
   const logTail = readHelperLogTail();
   if (logTail) return `Install failed. Helper log:\n${logTail}`.slice(0, 2000);
-  return "PoGo Stack install failed before producing output. On the server run: tail -n 80 /opt/qadbak/data/provisioning-helper.log";
+  return "App install failed before producing output. On the server run: tail -n 80 /opt/qadbak/data/provisioning-helper.log";
 }
 
 function readHelperLogTail(): string {

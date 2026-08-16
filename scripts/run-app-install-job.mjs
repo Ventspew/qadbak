@@ -89,47 +89,6 @@ function runHelper(args) {
   });
 }
 
-function pogoResult(jobId, input, helper) {
-  const domain = String(input.domain || "").trim();
-  const subdomain = String(input.subdomain || "pogo").trim() || "pogo";
-  const host = helper.pogoHost || `${subdomain}.${domain}`;
-  const credentials = [
-    {
-      label: "Stack directory",
-      value: "/opt/qadbak/integrations/pogo-stack",
-      isSecret: false,
-    },
-    {
-      label: "Dashboard login",
-      value: helper.dashboardUser || "admin",
-      isSecret: false,
-    },
-  ];
-  if (helper.dashboardPassword) {
-    credentials.push({
-      label: "Dashboard password",
-      value: helper.dashboardPassword,
-      isSecret: true,
-    });
-  }
-  credentials.push({
-    label: "Cosmog APK path",
-    value: "/opt/qadbak/integrations/pogo-stack/services/cosmog/apk/",
-    isSecret: false,
-  });
-  const postInstall = Array.isArray(helper.postInstall)
-    ? helper.postInstall.join(" ")
-    : helper.postInstall;
-  return {
-    appId: "pogo-stack",
-    domain,
-    primaryUrl: helper.adminUrl || `https://${host}/`,
-    credentials,
-    postInstall,
-    journalId: jobId,
-  };
-}
-
 function minecraftResult(jobId, input, helper) {
   const domain = String(input.domain || "").trim();
   const subdomain = String(input.subdomain || "mc").trim() || "mc";
@@ -169,18 +128,6 @@ function minecraftResult(jobId, input, helper) {
 }
 
 const TEMPLATES = {
-  "pogo-stack": {
-    message: "Starting PoGo Stack install (detached from panel)",
-    helperArgs: (input) => [
-      "pogo-stack-install",
-      String(input.domain || "").trim(),
-      JSON.stringify({
-        subdomain: String(input.subdomain || "pogo").trim() || "pogo",
-        mode: String(input.mode || "phones").trim() || "phones",
-      }),
-    ],
-    result: pogoResult,
-  },
   minecraft: {
     message: "Starting Minecraft Java server (detached from panel)",
     helperArgs: (input) => [

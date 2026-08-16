@@ -1,7 +1,0 @@
-{
-  "api_key": "EXEGGCUTE_API_KEY",
-  "device_name": "DEVICE_ID",
-  "rotom_url": "ROTOM_PUBLIC_WS",
-  "rotom_secret": "ROTOM_SECRET",
-  "workers_count": 4
-}

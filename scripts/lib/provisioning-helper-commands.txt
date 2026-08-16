@@ -179,9 +179,6 @@ php-modify-ini
 php-set-directory
 php-versions
 ping
-pogo-stack-install
-pogo-stack-status
-pogo-stack-update
 plan-apply
 plan-create
 plan-delete

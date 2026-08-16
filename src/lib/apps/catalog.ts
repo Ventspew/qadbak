@@ -33,7 +33,6 @@ const FALLBACK_ICONS: Record<string, string> = {
   processwire: "⚙️",
   jellyfin: "🎬",
   minecraft: "⛏️",
-  "pogo-stack": "⚡",
 };
 
 function normalizeRow(row: Record<string, unknown>): AppCatalogEntry {
@@ -81,7 +80,6 @@ export function catalogEntriesWithIntent(
       e.intentMode !== "domain-only" &&
       e.id !== "wordpress" &&
       e.id !== "jellyfin" &&
-      e.id !== "minecraft" &&
-      e.id !== "pogo-stack",
+      e.id !== "minecraft",
   );
 }

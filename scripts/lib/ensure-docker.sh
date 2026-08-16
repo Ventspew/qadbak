@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Docker Engine + Compose plugin for Qadbak apps (Jellyfin, PoGo, runtimes).
+# Install Docker Engine + Compose plugin for Qadbak apps (Jellyfin, Minecraft, runtimes).
 # Debian/Ubuntu via apt (docker.io) with Docker CE repo fallback.
 set -euo pipefail
 

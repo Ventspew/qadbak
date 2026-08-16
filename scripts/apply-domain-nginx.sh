@@ -74,7 +74,7 @@ if [[ -f "$PROXY_JSON" ]] && command -v jq &>/dev/null; then
   fi
 fi
 
-# Subdomains like pogo.example.com almost never have www — skip it for LE / server_name.
+# Subdomains like mc.example.com almost never have www — skip it for LE / server_name.
 INCLUDE_WWW=1
 dot_count="${DOMAIN//[^.]/}"
 if (( ${#dot_count} >= 2 )); then
