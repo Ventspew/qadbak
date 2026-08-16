@@ -11,7 +11,7 @@ export interface AlertRule {
   enabled: boolean;
   metric: "disk" | "memory" | "load" | "backup_age" | "ssl_expiry";
   threshold: number;
-  channel: "email" | "slack" | "telegram";
+  channel: "email" | "slack" | "telegram" | "discord";
   target: string;
 }
 
@@ -34,7 +34,12 @@ const VALID_METRICS = new Set<AlertRule["metric"]>([
   "backup_age",
   "ssl_expiry",
 ]);
-const VALID_CHANNELS = new Set<AlertRule["channel"]>(["email", "slack", "telegram"]);
+const VALID_CHANNELS = new Set<AlertRule["channel"]>([
+  "email",
+  "slack",
+  "telegram",
+  "discord",
+]);
 
 function normalizeRule(raw: unknown): AlertRule | null {
   if (!raw || typeof raw !== "object") return null;

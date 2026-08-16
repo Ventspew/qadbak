@@ -323,6 +323,22 @@
     "etaSeconds": 240
   },
   {
+    "id": "discord-bot",
+    "name": "discord-bot",
+    "label": "Discord Bot",
+    "desc": "Host a Discord bot on your VPS — invite it, then assign slash commands and alerts without code",
+    "version": "native",
+    "minPhp": "8.0",
+    "requiresDb": false,
+    "category": "tools",
+    "icon": "🤖",
+    "tagline": "One-click Discord bot with no-code tasks",
+    "featured": true,
+    "intentMode": "full",
+    "installer": "discord-bot-install",
+    "etaSeconds": 180
+  },
+  {
     "id": "mybb",
     "name": "mybb",
     "label": "MyBB",

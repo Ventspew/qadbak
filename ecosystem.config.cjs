@@ -55,5 +55,12 @@ module.exports = {
       interpreter: "node",
       env,
     },
+    {
+      name: "qadbak-discord-notify",
+      cwd: __dirname,
+      script: "scripts/qadbak-discord-notify.mjs",
+      interpreter: "node",
+      env,
+    },
   ],
 };

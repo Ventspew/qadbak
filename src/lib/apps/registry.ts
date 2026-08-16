@@ -7,6 +7,7 @@ import type { AppTemplate, AppTemplateSummary } from "./types";
 import { createCatalogTemplate } from "./templates/from-catalog";
 import { jellyfinTemplate } from "./templates/jellyfin";
 import { minecraftTemplate } from "./templates/minecraft";
+import { discordBotTemplate } from "./templates/discord-bot";
 import { wordpressTemplate } from "./templates/wordpress";
 
 let cache: {
@@ -27,7 +28,13 @@ async function loadRegistry(): Promise<{
   }
   const catalog = await loadAppCatalog();
   const fromCatalog = catalogEntriesWithIntent(catalog).map(createCatalogTemplate);
-  const templates = [wordpressTemplate, jellyfinTemplate, minecraftTemplate, ...fromCatalog];
+  const templates = [
+    wordpressTemplate,
+    jellyfinTemplate,
+    minecraftTemplate,
+    discordBotTemplate,
+    ...fromCatalog,
+  ];
   cache = { templates, catalog, at: now };
   return { templates, catalog };
 }
@@ -64,6 +71,7 @@ export function listTemplatesSync(): AppTemplateSummary[] {
       toSummary(wordpressTemplate),
       toSummary(jellyfinTemplate),
       toSummary(minecraftTemplate),
+      toSummary(discordBotTemplate),
     ];
   return cache.templates.map(toSummary);
 }
@@ -76,6 +84,8 @@ export function getTemplateSync(id: string): AppTemplate | undefined {
         ? jellyfinTemplate
         : id === "minecraft"
           ? minecraftTemplate
+          : id === "discord-bot"
+          ? discordBotTemplate
           : undefined;
   return cache.templates.find((t) => t.id === id);
 }

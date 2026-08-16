@@ -1,0 +1,18 @@
+{
+  "botName": "Qadbak",
+  "tasks": [
+    { "id": "alerts", "enabled": true, "type": "qadbak.alerts", "params": {} },
+    {
+      "id": "status",
+      "enabled": true,
+      "type": "qadbak.status",
+      "params": { "name": "status", "description": "Qadbak server status" }
+    },
+    {
+      "id": "minecraft",
+      "enabled": true,
+      "type": "minecraft.status",
+      "params": { "name": "minecraft", "description": "Minecraft server status" }
+    }
+  ]
+}

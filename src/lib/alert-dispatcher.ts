@@ -4,6 +4,7 @@ import path from "path";
 import { promisify } from "util";
 import { getHostMetrics } from "./host-metrics";
 import { loadAlertSettings, type AlertRule } from "./alert-rules";
+import { dmAllLinkedSubscribers } from "./discord-notify";
 import { runProvisioningHelper } from "./provisioner/native-exec";
 import { nativeFeatureEnabled } from "./provisioner/native-features";
 
@@ -44,7 +45,8 @@ function webhookForRule(
 ): string {
   if (rule.channel === "email") return rule.target || settings.emailTo || "";
   if (rule.channel === "slack") return rule.target || settings.slackWebhook || "";
-  return rule.target || settings.telegramWebhook || "";
+  if (rule.channel === "telegram") return rule.target || settings.telegramWebhook || "";
+  return "";
 }
 
 function rootDiskUsePct(
@@ -113,6 +115,9 @@ export async function evaluateAlerts(): Promise<EvaluateAlertsResult> {
         delivered = await sendEmail(dest, subject, msg);
       } else if (rule.channel === "slack" || rule.channel === "telegram") {
         delivered = await sendWebhook(dest, { text: msg });
+      } else if (rule.channel === "discord") {
+        const dm = await dmAllLinkedSubscribers(`${subject}\n${msg}`);
+        delivered = dm.sent > 0;
       }
     } catch {
       delivered = false;

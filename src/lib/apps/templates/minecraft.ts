@@ -88,13 +88,13 @@ export const minecraftTemplate: AppTemplate = {
       name: "discordBotToken",
       label: "Discord bot token (optional)",
       type: "password",
-      help: "From Discord Developer Portal → Bot. Enables login + DM updates for every player.",
+      help: "Optional. Leave empty to reuse the panel Discord bot (/admin/discord). From Discord Developer Portal → Bot.",
     },
     {
       name: "discordClientId",
       label: "Discord OAuth client ID (optional)",
       type: "text",
-      help: "Same application → OAuth2. Redirect: https://mc.yourdomain/auth/callback",
+      help: "Optional. Leave empty to reuse panel Discord OAuth. Redirect for players: https://mc.yourdomain/auth/callback",
     },
     {
       name: "discordClientSecret",

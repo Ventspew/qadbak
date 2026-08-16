@@ -84,7 +84,11 @@ function rememberSteps(stdout: string): void {
 }
 
 function helperTimeoutMs(command: string): number {
-  if (command === "jellyfin-install" || command.startsWith("minecraft-")) {
+  if (
+    command === "jellyfin-install" ||
+    command.startsWith("minecraft-") ||
+    command.startsWith("discord-bot-")
+  ) {
     return 2_700_000;
   }
   return 600_000;

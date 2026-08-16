@@ -153,6 +153,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     adminOnly: true,
     premium: "admin-updates",
   },
+  {
+    id: "discord",
+    title: "Discord bot",
+    description: "Invite a hosted Discord bot, assign no-code tasks, and get host DMs.",
+    href: "/admin/discord",
+    category: "Server",
+    adminOnly: true,
+    keywords: ["discord", "bot", "notify", "dm", "slash"],
+  },
 ];
 
 export function settingsForRole(role: "admin" | "client"): SettingsEntry[] {

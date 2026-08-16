@@ -90,6 +90,12 @@ export const SIDEBAR_CATEGORIES: SidebarCategory[] = [
         keywords: ["metrics", "alerts"],
       },
       {
+        id: "discord",
+        label: "Discord",
+        href: "/admin/discord",
+        keywords: ["bot", "notify", "dm", "oauth", "slash"],
+      },
+      {
         id: "health",
         label: "Health",
         href: "/admin/health",
@@ -281,16 +287,17 @@ export function isSidebarItemActive(
   item: SidebarNavItem,
 ): boolean {
   const match = item.match ?? "prefix";
+  const hrefPath = item.href.split("#")[0];
   if (match === "exact") {
-    return pathname === item.href;
+    return pathname === hrefPath;
   }
-  if (item.href === "/domains") {
+  if (hrefPath === "/domains") {
     return pathname === "/domains" || pathname.startsWith("/domains/");
   }
-  if (item.href === "/admin") {
+  if (hrefPath === "/admin") {
     return pathname === "/admin";
   }
-  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+  return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
 }
 
 /** Category is active if any child is active. */

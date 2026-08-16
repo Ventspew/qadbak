@@ -65,6 +65,9 @@ db-pass
 deliverability-dashboard
 dmarc-get
 dmarc-set
+discord-bot-install
+discord-bot-status
+discord-bot-sync-tasks
 dns-add
 dns-del
 dns-get

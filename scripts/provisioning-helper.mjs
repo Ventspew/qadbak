@@ -144,6 +144,11 @@ import { appInstallWordpress } from "./lib/provision-app-wordpress.mjs";
 import { jellyfinInstall, jellyfinListVideos, jellyfinSetMediaPath, jellyfinStatus, jellyfinStreamResolve } from "./lib/provision-jellyfin.mjs";
 import { minecraftInstall, minecraftStatus } from "./lib/provision-minecraft.mjs";
 import {
+  discordBotInstall,
+  discordBotStatus,
+  discordBotSyncTasks,
+} from "./lib/provision-discord-bot.mjs";
+import {
   securityGet,
   securitySetSpam,
   securitySetDkim,
@@ -604,6 +609,15 @@ async function main() {
       break;
     case "minecraft-status":
       await minecraftStatus(args[0]);
+      break;
+    case "discord-bot-install":
+      await discordBotInstall(args[0], args[1]);
+      break;
+    case "discord-bot-status":
+      await discordBotStatus(args[0]);
+      break;
+    case "discord-bot-sync-tasks":
+      await discordBotSyncTasks();
       break;
     case "script-delete":
       await scriptDelete(args[0], args[1]);

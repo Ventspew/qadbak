@@ -134,6 +134,51 @@ function minecraftResult(jobId, input, helper) {
   };
 }
 
+function discordBotResult(jobId, input, helper) {
+  const domain = String(input.domain || "").trim();
+  const subdomain = String(input.subdomain || "bot").trim() || "bot";
+  const host = helper.subdomain || `${subdomain}.${domain}`;
+  const credentials = [];
+  if (helper.inviteUrl) {
+    credentials.push({
+      label: "Invite the bot to Discord",
+      value: helper.inviteUrl,
+      isSecret: false,
+    });
+  }
+  credentials.push({
+    label: "Public page",
+    value: helper.adminUrl || `https://${host}/`,
+    isSecret: false,
+  });
+  if (helper.discordLogin) {
+    credentials.push({
+      label: "Link Discord (DMs)",
+      value: helper.discordLogin,
+      isSecret: false,
+    });
+  }
+  if (helper.botRedirectUri) {
+    credentials.push({
+      label: "OAuth redirect URI (Developer Portal)",
+      value: helper.botRedirectUri,
+      isSecret: false,
+    });
+  }
+  const postInstall = Array.isArray(helper.postInstall)
+    ? helper.postInstall.join(" ")
+    : helper.postInstall;
+  return {
+    appId: "discord-bot",
+    domain,
+    primaryUrl: helper.inviteUrl || helper.adminUrl || `https://${host}/`,
+    secondaryUrl: helper.adminUrl || `https://${host}/`,
+    credentials,
+    postInstall,
+    journalId: jobId,
+  };
+}
+
 const TEMPLATES = {
   minecraft: {
     message: "Starting Minecraft Java server (detached from panel)",
@@ -153,6 +198,25 @@ const TEMPLATES = {
       }),
     ],
     result: minecraftResult,
+  },
+  "discord-bot": {
+    message: "Starting Discord bot (detached from panel)",
+    helperArgs: (input) => [
+      "discord-bot-install",
+      String(input.domain || "").trim(),
+      JSON.stringify({
+        subdomain: String(input.subdomain || "bot").trim() || "bot",
+        botName: String(input.botName || "Qadbak").trim() || "Qadbak",
+        discordBotToken: String(input.discordBotToken || "").trim(),
+        discordClientId: String(input.discordClientId || "").trim(),
+        discordClientSecret: String(input.discordClientSecret || "").trim(),
+        discordInvite: String(input.discordInvite || "").trim(),
+        taskAlerts: input.taskAlerts,
+        taskStatus: input.taskStatus,
+        taskMinecraft: input.taskMinecraft,
+      }),
+    ],
+    result: discordBotResult,
   },
 };
 

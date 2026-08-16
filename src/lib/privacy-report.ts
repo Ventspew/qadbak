@@ -133,11 +133,24 @@ export async function buildPrivacyReport(): Promise<PrivacyReport> {
     outbound.push({
       id: "alert-webhooks",
       name: "Alert notifications",
-      destination: "Slack / Telegram / email (your rules)",
+      destination: "Slack / Telegram / email / Discord (your rules)",
       purpose: "Disk or service alerts you configured",
       when: "When alert rules fire",
       enabled: true,
       dataSent: ["Alert text and metrics snippets — per your rules"],
+      optional: true,
+    });
+  }
+
+  if (existsSync(path.join(root, "data", "discord-notify.json"))) {
+    outbound.push({
+      id: "discord-notify",
+      name: "Discord bot DMs",
+      destination: "Discord API (bot DMs and slash commands)",
+      purpose: "Host health, panel events, and no-code bot tasks you opted into",
+      when: "When Discord is enabled and an event or command fires",
+      enabled: true,
+      dataSent: ["Short status text — Discord user ids of people who linked"],
       optional: true,
     });
   }

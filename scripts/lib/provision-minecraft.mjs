@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import path from "node:path";
 import { dnsAdd } from "./provision-dns.mjs";
@@ -147,6 +147,21 @@ function notifyPortForDomain(domain) {
 
 function sanitizeSecret(raw) {
   return String(raw || "").trim().replace(/[\r\n]/g, "");
+}
+
+async function loadPanelDiscordNotify() {
+  try {
+    const raw = await readFile(path.join(QADBAK_DIR, "data", "discord-notify.json"), "utf8");
+    const o = JSON.parse(raw);
+    return {
+      botToken: String(o.botToken || "").trim(),
+      clientId: String(o.clientId || "").trim(),
+      clientSecret: String(o.clientSecret || "").trim(),
+      invite: String(o.invite || "").trim(),
+    };
+  } catch {
+    return { botToken: "", clientId: "", clientSecret: "", invite: "" };
+  }
 }
 
 async function copyNotifyApp(dest) {
@@ -403,14 +418,27 @@ export async function minecraftInstall(domain, payloadJson) {
     existing?.rconPassword || `mc-${randomBytes(12).toString("hex")}`;
   const sessionSecret =
     existing?.sessionSecret || randomBytes(24).toString("hex");
+  const panelDiscord = await loadPanelDiscordNotify();
   const discordBotToken =
-    sanitizeSecret(payload.discordBotToken) || existing?.discordBotToken || "";
+    sanitizeSecret(payload.discordBotToken) ||
+    panelDiscord.botToken ||
+    existing?.discordBotToken ||
+    "";
   const discordClientId =
-    sanitizeSecret(payload.discordClientId) || existing?.discordClientId || "";
+    sanitizeSecret(payload.discordClientId) ||
+    panelDiscord.clientId ||
+    existing?.discordClientId ||
+    "";
   const discordClientSecret =
-    sanitizeSecret(payload.discordClientSecret) || existing?.discordClientSecret || "";
+    sanitizeSecret(payload.discordClientSecret) ||
+    panelDiscord.clientSecret ||
+    existing?.discordClientSecret ||
+    "";
   const discordInvite =
-    sanitizeSecret(payload.discordInvite) || existing?.discordInvite || "";
+    sanitizeSecret(payload.discordInvite) ||
+    panelDiscord.invite ||
+    existing?.discordInvite ||
+    "";
   const motd = pack.motd;
   const join = port === 25565 ? mcHost : `${mcHost}:${port}`;
   const publicUrl = `https://${mcHost}`;

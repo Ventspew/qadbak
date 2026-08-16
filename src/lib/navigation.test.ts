@@ -35,4 +35,10 @@ describe("sidebar navigation", () => {
     const hits = filterSidebarItems(cats, "firewall");
     expect(hits.some((h) => h.href === "/admin/firewall")).toBe(true);
   });
+
+  it("includes Discord under Server", () => {
+    const cats = sidebarCategoriesForRole("admin");
+    const hits = filterSidebarItems(cats, "discord");
+    expect(hits.some((h) => h.href === "/admin/discord")).toBe(true);
+  });
 });

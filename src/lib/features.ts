@@ -434,6 +434,7 @@ export const ADMIN_NAV = [
   { path: "/admin/terminal", label: "Terminal" },
   { path: "/admin/updates", label: "Updates", premium: "admin-updates" as const },
   { path: "/admin/status", label: "Status" },
+  { path: "/admin/discord", label: "Discord" },
   { path: "/admin/system", label: "System" },
   { path: "/admin/networking", label: "Networking" },
   { path: "/admin/health", label: "Health" },

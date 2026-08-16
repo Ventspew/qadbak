@@ -1,7 +1,7 @@
 "use client";
 
 import { Alert, Button, Card, Input, Label } from "@/components/ui";
-import type { AlertSettings } from "@/lib/alert-rules";
+import type { AlertRule, AlertSettings } from "@/lib/alert-rules";
 import { RECOMMENDED_ALERT_RULES } from "@/lib/alert-rules-presets";
 import { useEffect, useState } from "react";
 
@@ -151,8 +151,22 @@ export function AdminAlertsSettings() {
               }}
             />
             <span>
-              {r.id}: {r.metric} ≥ {r.threshold} → {r.channel}
+              {r.id}: {r.metric} ≥ {r.threshold} →
             </span>
+            <select
+              className="qadbak-field py-1 text-sm"
+              value={r.channel}
+              onChange={(e) => {
+                const rules = [...settings.rules];
+                rules[i] = { ...r, channel: e.target.value as AlertRule["channel"] };
+                setSettings({ ...settings, rules });
+              }}
+            >
+              <option value="email">email</option>
+              <option value="slack">slack</option>
+              <option value="telegram">telegram</option>
+              <option value="discord">discord</option>
+            </select>
           </li>
         ))}
       </ul>
@@ -180,7 +194,9 @@ export function AdminAlertsSettings() {
                           ? s.emailTo ?? ""
                           : r.channel === "slack"
                             ? s.slackWebhook ?? ""
-                            : s.telegramWebhook ?? "",
+                            : r.channel === "telegram"
+                              ? s.telegramWebhook ?? ""
+                              : "",
                     })),
                   }
                 : s,
@@ -199,6 +215,7 @@ export function AdminAlertsSettings() {
       <p className="text-xs text-panel-muted">
         backup_age thresholds are in <strong className="text-white">days</strong> (e.g. 2 = 48
         hours). Plan cron: <code className="text-white">metrics-snapshot</code> + evaluate.
+        Discord channel DMs every linked user (panel + Minecraft + bot).
       </p>
     </Card>
   );
