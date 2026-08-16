@@ -304,6 +304,8 @@ code {{ background:#1e293b; padding:.15rem .4rem; border-radius:.35rem; }}
 
 
 class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, fmt: str, *args) -> None:
         print(fmt % args, flush=True)
 
@@ -316,19 +318,26 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return unsign(morsel.value)
 
-    def send_html(self, code: int, body: bytes) -> None:
+    def send_html(self, code: int, body: bytes, cookie: str | None = None) -> None:
         self.send_response(code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
         self.wfile.write(body)
+        self.close_connection = True
 
     def redirect(self, loc: str, cookie: str | None = None) -> None:
         self.send_response(302)
         self.send_header("Location", loc)
+        self.send_header("Content-Length", "0")
+        self.send_header("Connection", "close")
         if cookie:
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
+        self.close_connection = True
 
     def do_GET(self) -> None:  # noqa: N802
         try:
@@ -358,8 +367,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(payload)
+            self.close_connection = True
             return
 
         if path == "/login":
@@ -443,13 +454,7 @@ class Handler(BaseHTTPRequestHandler):
                     "<p>If no DM arrived: add the bot to a shared server, allow DMs, then /login again.</p>"
                 )
             cookie = f"qdb={sign(uid)}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax"
-            self.send_response(200)
-            body = html_page(note)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Set-Cookie", cookie)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self.send_html(200, html_page(note), cookie=cookie)
             return
 
         uid = self.cookie_user()

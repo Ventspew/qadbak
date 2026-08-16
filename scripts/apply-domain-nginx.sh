@@ -145,7 +145,7 @@ write_common_locations() {
         echo "        proxy_set_header Upgrade \$http_upgrade;"
         echo "        proxy_set_header Connection \$connection_upgrade;"
       else
-        echo "        proxy_set_header Connection \"\";"
+        echo "        proxy_set_header Connection \"close\";"
       fi
       echo "    }"
     done < <(jq -r 'unique_by(.path) | .[] | [.path,.dest,(.websocket // false)] | @tsv' "$PROXY_JSON" 2>/dev/null)

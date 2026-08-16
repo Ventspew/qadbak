@@ -233,6 +233,8 @@ button {{ background:#334155; color:#fff; border:0; padding:.55rem .9rem; border
 
 
 class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, fmt: str, *args) -> None:
         print(fmt % args, flush=True)
 
@@ -249,15 +251,20 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
+        self.close_connection = True
 
     def redirect(self, loc: str, cookie: str | None = None) -> None:
         self.send_response(302)
         self.send_header("Location", loc)
+        self.send_header("Content-Length", "0")
+        self.send_header("Connection", "close")
         if cookie:
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
+        self.close_connection = True
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urllib.parse.urlparse(self.path)
