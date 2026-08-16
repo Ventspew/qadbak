@@ -3,6 +3,8 @@ import { requireAdmin } from "@/lib/admin-api";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import {
   discordBotInviteUrl,
+  discoverDiscordUpdatesChannel,
+  fetchDiscordBotPresence,
   listDiscordBotInstalls,
   loadDiscordBotRecipes,
   normalizeDiscordBotRecipes,
@@ -35,12 +37,16 @@ async function publicPayload(request: Request) {
   };
   const subscribers = await listMergedSubscribers();
   const installs = await listDiscordBotInstalls();
+  const bot = cfg.botToken
+    ? await fetchDiscordBotPresence(cfg.botToken)
+    : { ok: false, username: "", id: "", guilds: [] };
   return {
     settings,
     subscribers,
     recipes,
     slashCommands: slashCommandsFromTasks(recipes),
     installs,
+    bot,
   };
 }
 
@@ -91,6 +97,42 @@ export async function POST(request: Request) {
         return jsonError("No linked Discord users yet. Use Link my Discord first.", 400);
       }
       return jsonOk({ ok: true, ...result });
+    }
+
+    if (action === "test-channel") {
+      const cfg = await loadDiscordNotifyConfig();
+      if (!discordBotReady(cfg)) {
+        return jsonError("Enable Discord and save a bot token first.", 400);
+      }
+      const channelId = await discoverDiscordUpdatesChannel(
+        cfg.botToken,
+        cfg.updatesChannelId,
+      );
+      if (!channelId) {
+        return jsonError(
+          "Bot is in 0 servers (or has no text channel). Click Invite / Add this bot to Discord first.",
+          400,
+        );
+      }
+      const sent = await sendDiscordChannelMessage({
+        botToken: cfg.botToken,
+        channelId,
+        content:
+          "[Qadbak] Test: channel updates work. If you see this, live server alerts will land here.",
+      });
+      if (!sent.ok) {
+        return jsonError(
+          sent.skipped
+            ? "The bot cannot post in that channel. Give it Send Messages permission."
+            : "Could not post in the Discord server.",
+          502,
+        );
+      }
+      if (!cfg.updatesChannelId) {
+        await saveDiscordNotifyConfig({ ...cfg, updatesChannelId: channelId });
+      }
+      await auditLog(session.username, "discord-notify-test-channel");
+      return jsonOk({ ok: true, channelId, ...(await publicPayload(request)) });
     }
 
     if (action === "save-tasks") {

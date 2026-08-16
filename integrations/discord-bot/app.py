@@ -261,7 +261,10 @@ def html_page(body: str) -> bytes:
         login = '<p><a class="btn" href="/login">Link Discord for DMs</a></p>'
     invite = invite_url()
     invite_html = (
-        f'<p><a class="btn" href="{invite}">Add this bot to Discord</a></p>' if invite else ""
+        f'<p><a class="btn" href="{invite}">Add this bot to your Discord server</a></p>'
+        "<p>Zonder Invite kan de bot nergens posten en geen DMs sturen.</p>"
+        if invite
+        else ""
     )
     guild = f'<p class="muted">Guild invite: <a href="{GUILD_INVITE}">{GUILD_INVITE}</a></p>' if GUILD_INVITE else ""
     tasks = load_tasks().get("tasks") or []
@@ -483,11 +486,9 @@ def start_bot() -> None:
         return
 
     intents = discord.Intents.default()
-    try:
-        intents.message_content = True
-        intents.members = True
-    except Exception:
-        pass
+    # Do not require Message Content / Server Members — those privileged
+    # intents prevent the gateway from connecting if they are off in the portal,
+    # which silently stops all channel updates. Keyword/welcome stay optional.
     bot = commands.Bot(command_prefix="!", intents=intents)
 
     async def handle_named(interaction: discord.Interaction, name: str) -> None:
@@ -542,19 +543,6 @@ def start_bot() -> None:
             print(f"WARN slash sync: {e}", flush=True)
 
     last_mtime = {"v": 0.0}
-
-    @bot.event
-    async def on_ready():
-        print(f"discord gateway ready as {bot.user}", flush=True)
-        try:
-            last_mtime["v"] = TASKS_PATH.stat().st_mtime
-        except OSError:
-            last_mtime["v"] = 0.0
-        await rebuild_tree()
-        if not reload_tasks.is_running():
-            reload_tasks.start()
-        if not host_watch.is_running():
-            host_watch.start()
 
     @bot.event
     async def on_member_join(member: discord.Member):
@@ -660,6 +648,28 @@ def start_bot() -> None:
         for msg in msgs[:6]:
             await post_update(msg)
             await asyncio.sleep(0.4)
+
+    @bot.event
+    async def on_ready():
+        print(
+            f"discord gateway ready as {bot.user} guilds={len(bot.guilds)}",
+            flush=True,
+        )
+        try:
+            last_mtime["v"] = TASKS_PATH.stat().st_mtime
+        except OSError:
+            last_mtime["v"] = 0.0
+        await rebuild_tree()
+        if not reload_tasks.is_running():
+            reload_tasks.start()
+        if not host_watch.is_running():
+            host_watch.start()
+        if len(bot.guilds) == 0:
+            print("WARN: bot is in 0 Discord servers — click Invite on the public page", flush=True)
+            return
+        await post_update(
+            f"[Qadbak] **{BOT_NAME}** is online. Je krijgt hier status, Docker en server-updates."
+        )
 
     try:
         bot.run(BOT_TOKEN)

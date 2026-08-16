@@ -565,12 +565,6 @@ async function alertsEnabled() {
   return row.enabled !== false;
 }
 
-async function discordBotContainerUp() {
-  const r = await runCmd("docker", ["ps", "--format", "{{.Names}}"]);
-  if (!r.ok) return false;
-  return r.stdout.split("\n").some((n) => n.startsWith("qadbak-discord-bot-"));
-}
-
 async function tick() {
   const cfg = normalizeConfig(await readJson(CONFIG_PATH, {}));
   if (!cfg.enabled || !cfg.botToken) {
@@ -580,33 +574,28 @@ async function tick() {
   const users = await loadSubscribers();
   const state = (await readJson(STATE_PATH, {})) || {};
   const now = Date.now();
-  const discovered = await discoverChannel(
+  const channelId = await discoverChannel(
     cfg.botToken,
     cfg.updatesChannelId || state.updatesChannelId || "",
   );
-  if (discovered) state.updatesChannelId = discovered;
-  const containerOwnsGuild = await discordBotContainerUp();
-  const channelId = containerOwnsGuild ? "" : discovered;
+  if (channelId) state.updatesChannelId = channelId;
   if (!channelId && users.length === 0) {
-    if (!containerOwnsGuild && !state.loggedNoTarget) {
+    if (!state.loggedNoTarget) {
       console.warn(
-        "qadbak-discord-notify: invite the bot to a Discord server (or Link my Discord) so updates have a destination",
+        "qadbak-discord-notify: invite the bot to a Discord server (Add to Discord) so it can post updates",
       );
       state.loggedNoTarget = true;
       await writeJson(STATE_PATH, state);
     }
-    if (!containerOwnsGuild) return;
-    if (users.length === 0) {
-      await writeJson(STATE_PATH, state);
-      return;
-    }
+    return;
   }
   const queue = [];
-  if (!containerOwnsGuild && !state.helloSent && channelId) {
+  if (channelId && state.helloChannelId !== channelId) {
     queue.push(
       "[Qadbak] Live updates staan aan. Je krijgt hier serverstatus, Docker, installs en storingen.",
     );
     state.helloSent = true;
+    state.helloChannelId = channelId;
   }
   const lastDigest = Number(state.digestAt || 0);
   if (!lastDigest || now - lastDigest >= DIGEST_MS) {

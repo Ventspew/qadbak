@@ -209,6 +209,74 @@ export async function sendDiscordChannelMessage(opts: {
   return { ok: res.ok, status: res.status };
 }
 
+export async function discoverDiscordUpdatesChannel(
+  botToken: string,
+  preferred = "",
+): Promise<string> {
+  if (preferred && /^\d{5,32}$/.test(preferred)) return preferred;
+  if (!botToken) return "";
+  const headers = {
+    Authorization: `Bot ${botToken}`,
+    "User-Agent": USER_AGENT,
+  };
+  const guildsRes = await fetch(`${DISCORD_API}/users/@me/guilds`, { headers });
+  if (!guildsRes.ok) return "";
+  const guilds = (await guildsRes.json()) as Array<{ id?: string }>;
+  if (!Array.isArray(guilds)) return "";
+  for (const g of guilds) {
+    const guildId = String(g?.id || "");
+    if (!guildId) continue;
+    const chsRes = await fetch(`${DISCORD_API}/guilds/${guildId}/channels`, { headers });
+    if (!chsRes.ok) continue;
+    const channels = (await chsRes.json()) as Array<{ id?: string; type?: number; name?: string }>;
+    if (!Array.isArray(channels)) continue;
+    const text = channels.filter((c) => c?.type === 0 && c?.id);
+    const named = text.find((c) =>
+      /general|chat|updates|qadbak|status/i.test(String(c.name || "")),
+    );
+    const pick = named || text[0];
+    if (pick?.id) return String(pick.id);
+  }
+  return "";
+}
+
+export async function fetchDiscordBotPresence(botToken: string): Promise<{
+  ok: boolean;
+  username: string;
+  id: string;
+  guilds: Array<{ id: string; name: string }>;
+}> {
+  const empty = { ok: false, username: "", id: "", guilds: [] as Array<{ id: string; name: string }> };
+  if (!botToken) return empty;
+  const headers = {
+    Authorization: `Bot ${botToken}`,
+    "User-Agent": USER_AGENT,
+  };
+  try {
+    const meRes = await fetch(`${DISCORD_API}/users/@me`, { headers });
+    if (!meRes.ok) return empty;
+    const me = (await meRes.json()) as { id?: string; username?: string };
+    const gRes = await fetch(`${DISCORD_API}/users/@me/guilds`, { headers });
+    const raw = gRes.ok ? ((await gRes.json()) as Array<{ id?: string; name?: string }>) : [];
+    const guilds = Array.isArray(raw)
+      ? raw
+          .map((g) => ({
+            id: String(g.id || ""),
+            name: String(g.name || g.id || ""),
+          }))
+          .filter((g) => /^\d{5,32}$/.test(g.id))
+      : [];
+    return {
+      ok: true,
+      username: String(me.username || "bot"),
+      id: String(me.id || ""),
+      guilds,
+    };
+  } catch {
+    return empty;
+  }
+}
+
 export async function listDiscordBotInstalls(): Promise<PublicDiscordBotInstall[]> {
   const dir = path.join(process.cwd(), "data", "domain-config");
   let names: string[] = [];

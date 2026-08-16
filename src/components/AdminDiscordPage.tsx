@@ -30,6 +30,12 @@ type Install = {
   inviteUrl: string;
   botRedirectUri: string;
 };
+type BotPresence = {
+  ok: boolean;
+  username: string;
+  id: string;
+  guilds: Array<{ id: string; name: string }>;
+};
 
 const TASK_TYPES: Array<{ value: string; label: string; hint: string }> = [
   { value: "qadbak.alerts", label: "Qadbak alerts (DMs)", hint: "Disk, RAM, load, nginx/pm2, Docker, installs, updates" },
@@ -55,6 +61,7 @@ export function AdminDiscordPage() {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [recipes, setRecipes] = useState<Recipes | null>(null);
   const [installs, setInstalls] = useState<Install[]>([]);
+  const [bot, setBot] = useState<BotPresence | null>(null);
   const [slashCommands, setSlashCommands] = useState<Array<{ name: string; description: string }>>([]);
   const [botToken, setBotToken] = useState("");
   const [clientId, setClientId] = useState("");
@@ -76,6 +83,7 @@ export function AdminDiscordPage() {
     recipes?: Recipes;
     installs?: Install[];
     slashCommands?: Array<{ name: string; description: string }>;
+    bot?: BotPresence;
   }) {
     if (data.settings) {
       setSettings(data.settings);
@@ -90,6 +98,7 @@ export function AdminDiscordPage() {
     if (data.recipes) setRecipes(data.recipes);
     if (data.installs) setInstalls(data.installs);
     if (data.slashCommands) setSlashCommands(data.slashCommands);
+    if (data.bot) setBot(data.bot);
   }
 
   async function load() {
@@ -201,7 +210,26 @@ export function AdminDiscordPage() {
     }
   }
 
-  async function testDm() {
+  async function testChannel() {
+    setTesting(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/admin/discord", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test-channel" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Test failed");
+      applyPayload(data);
+      setSuccess("Test message posted in your Discord server.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Test failed");
+    } finally {
+      setTesting(false);
+    }
+  }
     setTesting(true);
     setError("");
     setSuccess("");
@@ -339,11 +367,18 @@ export function AdminDiscordPage() {
       <Card className="space-y-4">
         <h2 className="text-lg font-medium text-white">Bot credentials</h2>
         <p className="text-sm text-panel-muted">
-          One bot for the whole Qadbak host. Minecraft join/leave stays on the
-          Minecraft sidecar. Discord often cannot DM unless you share a guild
-          (invite URL). / Dezelfde bot als Minecraft; Discord kan vaak geen DM
-          sturen tenzij jullie een server delen.
+          One bot for the whole Qadbak host. First click <strong>Invite</strong> so
+          the bot joins your Discord server — otherwise there are no channel posts
+          and Discord blocks DMs. Then Link my Discord for DMs.
         </p>
+        {bot?.ok && (
+          <p className="text-sm text-panel-muted">
+            Bot @{bot.username}
+            {bot.guilds.length === 0
+              ? " is in 0 servers — click Invite below or the button on bot.inveil.net."
+              : ` is in ${bot.guilds.length} server(s): ${bot.guilds.map((g) => g.name).join(", ")}`}
+          </p>
+        )}
         <label className="flex items-center gap-2 text-sm text-panel-muted">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           Enable host Discord updates
@@ -421,6 +456,18 @@ export function AdminDiscordPage() {
             }}
           >
             Link my Discord
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={busy || !settings.inviteUrl}
+            onClick={() => {
+              if (settings.inviteUrl) window.open(settings.inviteUrl, "_blank");
+            }}
+          >
+            Invite bot to Discord
+          </Button>
+          <Button variant="secondary" disabled={busy} onClick={() => void testChannel()}>
+            {testing ? "Sending…" : "Post test in Discord server"}
           </Button>
           <Button variant="secondary" disabled={busy} onClick={() => void testDm()}>
             {testing ? "Sending…" : "Test DM"}
