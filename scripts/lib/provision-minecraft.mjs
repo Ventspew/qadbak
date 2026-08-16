@@ -122,6 +122,42 @@ function parsePort(raw) {
   return 25565;
 }
 
+async function upsertProxy(domain, loc, dest, websocket = false) {
+  const proxies = await readDomainConfigJson(domain, "proxies.json", []);
+  let pathKey = String(loc || "/").trim();
+  if (!pathKey.startsWith("/")) pathKey = `/${pathKey}`;
+  if (pathKey !== "/") pathKey = `${pathKey.replace(/\/+$/, "")}/`;
+  const idx = proxies.findIndex((p) => p.path === pathKey);
+  const row = {
+    path: pathKey,
+    dest: String(dest).trim(),
+    type: "proxy",
+    ...(websocket ? { websocket: true } : {}),
+  };
+  if (idx >= 0) proxies[idx] = row;
+  else proxies.push(row);
+  await writeDomainConfigJson(domain, "proxies.json", proxies);
+}
+
+function notifyPortForDomain(domain) {
+  let h = 0;
+  for (let i = 0; i < domain.length; i += 1) h = (h * 31 + domain.charCodeAt(i)) >>> 0;
+  return 18700 + (h % 800);
+}
+
+function sanitizeSecret(raw) {
+  return String(raw || "").trim().replace(/[\r\n]/g, "");
+}
+
+async function copyNotifyApp(dest) {
+  const src = path.join(QADBAK_DIR, "integrations", "minecraft-notify");
+  if (!(await access(src).then(() => true).catch(() => false))) {
+    fail(`Missing ${src}`);
+  }
+  await mkdir(dest, { recursive: true });
+  await exec("cp", ["-a", `${src}/.`, dest], { timeout: 30_000 });
+}
+
 function parseMemory(raw) {
   const s = String(raw || "4G").trim().toUpperCase();
   if (["2G", "4G", "8G"].includes(s)) return s;
@@ -244,6 +280,16 @@ function buildCompose({
   onlineMode,
   rconPassword,
   motd,
+  notifyDir,
+  notifyPort,
+  publicUrl,
+  joinAddress,
+  packLabel,
+  discordBotToken,
+  discordClientId,
+  discordClientSecret,
+  discordInvite,
+  sessionSecret,
 }) {
   const projects = [
     ...(pack.modrinth ? pack.modrinth.split(",") : []),
@@ -294,6 +340,30 @@ ${env.join("\n")}
       timeout: 10s
       retries: 20
       start_period: 180s
+  notify:
+    build: ${notifyDir}
+    container_name: qadbak-mc-notify-${user}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${notifyPort}:8787"
+    environment:
+      PUBLIC_URL: ${yamlQuote(publicUrl)}
+      JOIN_ADDRESS: ${yamlQuote(joinAddress)}
+      PACK_LABEL: ${yamlQuote(packLabel)}
+      MOTD: ${yamlQuote(motd)}
+      DISCORD_BOT_TOKEN: ${yamlQuote(discordBotToken)}
+      DISCORD_CLIENT_ID: ${yamlQuote(discordClientId)}
+      DISCORD_CLIENT_SECRET: ${yamlQuote(discordClientSecret)}
+      DISCORD_GUILD_INVITE: ${yamlQuote(discordInvite)}
+      SESSION_SECRET: ${yamlQuote(sessionSecret)}
+      LOG_PATH: /data/logs/latest.log
+      SUBSCRIBERS_PATH: /data/discord-subscribers.json
+      MC_HOST: mc
+      MC_PORT: "25565"
+    volumes:
+      - ${dataDir}:/data
+    depends_on:
+      - mc
 `;
 }
 
@@ -331,7 +401,22 @@ export async function minecraftInstall(domain, payloadJson) {
   const existing = await readDomainConfigJson(parent, "minecraft.json", null);
   const rconPassword =
     existing?.rconPassword || `mc-${randomBytes(12).toString("hex")}`;
+  const sessionSecret =
+    existing?.sessionSecret || randomBytes(24).toString("hex");
+  const discordBotToken =
+    sanitizeSecret(payload.discordBotToken) || existing?.discordBotToken || "";
+  const discordClientId =
+    sanitizeSecret(payload.discordClientId) || existing?.discordClientId || "";
+  const discordClientSecret =
+    sanitizeSecret(payload.discordClientSecret) || existing?.discordClientSecret || "";
+  const discordInvite =
+    sanitizeSecret(payload.discordInvite) || existing?.discordInvite || "";
   const motd = pack.motd;
+  const join = port === 25565 ? mcHost : `${mcHost}:${port}`;
+  const publicUrl = `https://${mcHost}`;
+  const notifyPort = notifyPortForDomain(parent);
+  const notifyDir = path.join(appsDir, "notify");
+  await copyNotifyApp(notifyDir);
   const { uid, gid } = await uidGid(user);
   const composePath = path.join(appsDir, "docker-compose.yml");
   const compose = buildCompose({
@@ -346,6 +431,16 @@ export async function minecraftInstall(domain, payloadJson) {
     onlineMode,
     rconPassword,
     motd,
+    notifyDir,
+    notifyPort,
+    publicUrl,
+    joinAddress: join,
+    packLabel: pack.label,
+    discordBotToken,
+    discordClientId,
+    discordClientSecret,
+    discordInvite,
+    sessionSecret,
   });
   assertComposePolicyYaml(compose);
   await writeFile(composePath, compose, "utf8");
@@ -364,9 +459,9 @@ export async function minecraftInstall(domain, payloadJson) {
 
   await ensureDocker();
   await openFirewall(port);
-  await exec("docker", ["compose", "-f", composePath, "pull"], {
+  await exec("docker", ["compose", "-f", composePath, "build", "notify"], {
     timeout: 600_000,
-  }).catch(() => {});
+  }).catch((e) => emit(`WARN: notify build: ${e instanceof Error ? e.message : String(e)}`));
   await exec("docker", ["compose", "-f", composePath, "up", "-d"], {
     timeout: 600_000,
   });
@@ -381,20 +476,27 @@ export async function minecraftInstall(domain, payloadJson) {
     mode: "static",
     wwwRedirect: "none",
   });
+  await upsertProxy(mcHost, "/", `http://127.0.0.1:${notifyPort}/`, false);
   await reloadNginx(mcHost, user);
   await sslIssue(mcHost, mcHost).catch(() => {});
 
-  const join = port === 25565 ? mcHost : `${mcHost}:${port}`;
   const cfg = {
     parentDomain: parent,
     subdomain: mcHost,
     subPrefix,
     pack: packId,
     port,
+    notifyPort,
     memory,
     onlineMode,
     extraMods,
     rconPassword,
+    sessionSecret,
+    discordBotToken,
+    discordClientId,
+    discordClientSecret,
+    discordInvite,
+    discordEnabled: Boolean(discordBotToken && discordClientId && discordClientSecret),
     composePath,
     dataDir,
     installedAt: new Date().toISOString(),
@@ -432,10 +534,15 @@ export async function minecraftInstall(domain, payloadJson) {
     memory,
     rconPassword,
     dataDir,
+    discordEnabled: Boolean(discordBotToken && discordClientId && discordClientSecret),
+    discordLogin: `https://${mcHost}/login`,
     postInstall: [
       `Join in Java Edition: ${join}`,
       `Status page: https://${mcHost}/`,
       extras,
+      discordBotToken && discordClientId
+        ? `Players log in with Discord at https://${mcHost}/login and get join/leave + online/offline DMs. Redirect URI: https://${mcHost}/auth/callback`
+        : `Add a Discord application (bot token + OAuth2 client id/secret) and re-run this install to enable DM updates. Redirect URI: https://${mcHost}/auth/callback`,
       "First boot downloads the server jar (1–3 minutes). Open TCP 25565 on the provider firewall if players cannot connect.",
       pack.heavy && memory === "2G"
         ? "This pack is heavy — raise RAM to 4G or 8G if it crashes."
@@ -472,8 +579,14 @@ export async function minecraftStatus(domain) {
   emit({
     ok: true,
     installed: true,
-    ...cfg,
+    parentDomain: cfg.parentDomain,
+    subdomain: cfg.subdomain,
+    pack: cfg.pack,
+    port: cfg.port,
+    memory: cfg.memory,
+    discordEnabled: Boolean(cfg.discordEnabled),
     containerStatus,
     joinAddress: cfg.port === 25565 ? cfg.subdomain : `${cfg.subdomain}:${cfg.port}`,
+    installedAt: cfg.installedAt,
   });
 }

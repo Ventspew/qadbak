@@ -20,8 +20,9 @@ export const minecraftTemplate: AppTemplate = {
   description:
     "Installs a Java Edition Minecraft server in Docker. Pick a complete package: " +
     "official Vanilla, Paper (drop plugins), Fabric Performance, Create, Cobblemon, " +
-    "or an empty Fabric/Forge/NeoForge mods folder. Players join mc.yourdomain.com. " +
-    "A status page is served on HTTPS; the game uses TCP 25565.",
+    "or an empty Fabric/Forge/NeoForge mods folder. Players join mc.yourdomain.com, " +
+    "can log in with Discord, and receive join/leave and online/offline updates in DMs. " +
+    "The game uses TCP 25565.",
   etaSeconds: 240,
   inputs: [
     {
@@ -83,6 +84,30 @@ export const minecraftTemplate: AppTemplate = {
       placeholder: "lithium,spark",
       help: "Comma-separated Modrinth slugs. Ignored on Vanilla and Paper. Fabric/Forge/NeoForge only.",
     },
+    {
+      name: "discordBotToken",
+      label: "Discord bot token (optional)",
+      type: "password",
+      help: "From Discord Developer Portal → Bot. Enables login + DM updates for every player.",
+    },
+    {
+      name: "discordClientId",
+      label: "Discord OAuth client ID (optional)",
+      type: "text",
+      help: "Same application → OAuth2. Redirect: https://mc.yourdomain/auth/callback",
+    },
+    {
+      name: "discordClientSecret",
+      label: "Discord OAuth client secret (optional)",
+      type: "password",
+    },
+    {
+      name: "discordInvite",
+      label: "Discord invite URL (optional)",
+      type: "text",
+      placeholder: "https://discord.gg/...",
+      help: "Players may need to join this server before the bot can DM them.",
+    },
   ],
   async install({ input }) {
     const domain = input.domain?.trim().toLowerCase();
@@ -104,6 +129,10 @@ export const minecraftTemplate: AppTemplate = {
         memory,
         onlineMode: input.onlineMode,
         extraMods: input.extraMods || "",
+        discordBotToken: input.discordBotToken || "",
+        discordClientId: input.discordClientId || "",
+        discordClientSecret: input.discordClientSecret || "",
+        discordInvite: input.discordInvite || "",
       }),
     )) as {
       adminUrl?: string;

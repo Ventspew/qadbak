@@ -114,6 +114,13 @@ function minecraftResult(jobId, input, helper) {
       isSecret: true,
     });
   }
+  if (helper.discordLogin) {
+    credentials.push({
+      label: "Discord login (DM updates)",
+      value: helper.discordLogin,
+      isSecret: false,
+    });
+  }
   const postInstall = Array.isArray(helper.postInstall)
     ? helper.postInstall.join(" ")
     : helper.postInstall;
@@ -139,6 +146,10 @@ const TEMPLATES = {
         memory: String(input.memory || "4G").trim() || "4G",
         onlineMode: input.onlineMode,
         extraMods: String(input.extraMods || "").trim(),
+        discordBotToken: String(input.discordBotToken || "").trim(),
+        discordClientId: String(input.discordClientId || "").trim(),
+        discordClientSecret: String(input.discordClientSecret || "").trim(),
+        discordInvite: String(input.discordInvite || "").trim(),
       }),
     ],
     result: minecraftResult,
