@@ -17,6 +17,7 @@ export interface DiscordNotifyConfig {
   clientSecret: string;
   publicKey: string;
   invite: string;
+  updatesChannelId: string;
   enabled: boolean;
 }
 
@@ -39,6 +40,7 @@ export interface PublicDiscordNotifySettings {
   clientSecretSet: boolean;
   publicKey: string;
   invite: string;
+  updatesChannelId: string;
   redirectUri: string;
 }
 
@@ -54,6 +56,7 @@ const DEFAULTS: DiscordNotifyConfig = {
   clientSecret: "",
   publicKey: "",
   invite: "",
+  updatesChannelId: "",
   enabled: true,
 };
 
@@ -68,6 +71,8 @@ export function normalizeDiscordNotifyConfig(input: unknown): DiscordNotifyConfi
       typeof o.clientSecret === "string" ? o.clientSecret.trim() : base.clientSecret,
     publicKey: typeof o.publicKey === "string" ? o.publicKey.trim() : base.publicKey,
     invite: typeof o.invite === "string" ? o.invite.trim() : base.invite,
+    updatesChannelId:
+      typeof o.updatesChannelId === "string" ? o.updatesChannelId.trim() : base.updatesChannelId,
     enabled: typeof o.enabled === "boolean" ? o.enabled : base.enabled,
   };
 }
@@ -90,6 +95,9 @@ export function mergeDiscordNotifyPatch(
   if (typeof o.clientId === "string") next.clientId = o.clientId.trim();
   if (typeof o.publicKey === "string") next.publicKey = o.publicKey.trim();
   if (typeof o.invite === "string") next.invite = o.invite.trim();
+  if (typeof o.updatesChannelId === "string") {
+    next.updatesChannelId = o.updatesChannelId.trim();
+  }
   if (typeof o.enabled === "boolean") next.enabled = o.enabled;
   return normalizeDiscordNotifyConfig(next);
 }
@@ -105,6 +113,7 @@ export function redactDiscordNotifyConfig(
     clientSecretSet: Boolean(cfg.clientSecret),
     publicKey: cfg.publicKey,
     invite: cfg.invite,
+    updatesChannelId: cfg.updatesChannelId,
     redirectUri,
   };
 }

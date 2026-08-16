@@ -26,6 +26,7 @@ const JOURNAL_DIR = path.join(DATA, "journal");
 const UPDATE_JOBS = path.join(DATA, "update-jobs");
 const INTERVAL_MS = 45_000;
 const COOLDOWN_MS = 45 * 60 * 1000;
+const DIGEST_MS = 30 * 60 * 1000;
 const DISCORD_API = "https://discord.com/api/v10";
 const USER_AGENT = "QadbakNotify/1.0";
 const WATCH_PM2 = ["qadbak", "qadbak-terminal"];
@@ -95,6 +96,8 @@ function normalizeConfig(raw) {
   const o = raw && typeof raw === "object" ? raw : {};
   return {
     botToken: typeof o.botToken === "string" ? o.botToken.trim() : "",
+    updatesChannelId:
+      typeof o.updatesChannelId === "string" ? o.updatesChannelId.trim() : "",
     enabled: typeof o.enabled === "boolean" ? o.enabled : true,
   };
 }
@@ -155,37 +158,86 @@ async function loadSubscribers() {
   return [...byId.values()];
 }
 
+async function discordApi(botToken, method, apiPath, body) {
+  const res = await fetch(`${DISCORD_API}${apiPath}`, {
+    method,
+    headers: {
+      Authorization: `Bot ${botToken}`,
+      "Content-Type": "application/json",
+      "User-Agent": USER_AGENT,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  if (res.status === 429) {
+    const retry = Number(res.headers.get("retry-after") || "1");
+    await sleep(Math.min(30_000, Math.max(500, retry * 1000)));
+  }
+  return { ok: res.ok, status: res.status, json };
+}
+
 async function sendDm(botToken, userId, content) {
-  const headers = {
-    Authorization: `Bot ${botToken}`,
-    "Content-Type": "application/json",
-    "User-Agent": USER_AGENT,
-  };
-  const chRes = await fetch(`${DISCORD_API}/users/@me/channels`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ recipient_id: userId }),
+  const chRes = await discordApi(botToken, "POST", "/users/@me/channels", {
+    recipient_id: userId,
   });
   if (chRes.status === 403) return { skipped: true };
-  if (chRes.status === 429) {
-    const retry = Number(chRes.headers.get("retry-after") || "1");
-    await sleep(Math.min(30_000, Math.max(500, retry * 1000)));
-    return { skipped: true };
-  }
   if (!chRes.ok) return { ok: false };
-  const ch = await chRes.json();
-  if (!ch?.id) return { ok: false };
-  const msgRes = await fetch(`${DISCORD_API}/channels/${ch.id}/messages`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ content: String(content).slice(0, 1900) }),
+  const id = chRes.json?.id;
+  if (!id) return { ok: false };
+  const msgRes = await discordApi(botToken, "POST", `/channels/${id}/messages`, {
+    content: String(content).slice(0, 1900),
   });
   if (msgRes.status === 403) return { skipped: true };
   return { ok: msgRes.ok };
 }
 
-async function broadcast(botToken, users, content) {
-  if (!botToken || users.length === 0) return;
+async function postChannel(botToken, channelId, content) {
+  if (!channelId || !/^\d{5,32}$/.test(channelId)) return { ok: false };
+  const r = await discordApi(botToken, "POST", `/channels/${channelId}/messages`, {
+    content: String(content).slice(0, 1900),
+  });
+  if (r.status === 403) return { skipped: true };
+  return { ok: r.ok, status: r.status };
+}
+
+async function discoverChannel(botToken, preferred) {
+  if (preferred && /^\d{5,32}$/.test(preferred)) return preferred;
+  const guilds = await discordApi(botToken, "GET", "/users/@me/guilds");
+  const list = Array.isArray(guilds.json) ? guilds.json : [];
+  for (const g of list) {
+    const guildId = String(g?.id || "");
+    if (!guildId) continue;
+    const chs = await discordApi(botToken, "GET", `/guilds/${guildId}/channels`);
+    const channels = Array.isArray(chs.json) ? chs.json : [];
+    const text = channels.filter((c) => c?.type === 0 && c?.id);
+    const named = text.find((c) =>
+      /general|chat|updates|qadbak|status/i.test(String(c.name || "")),
+    );
+    const pick = named || text[0];
+    if (pick?.id) return String(pick.id);
+  }
+  return "";
+}
+
+async function broadcast(botToken, users, channelId, content) {
+  if (!botToken) return;
+  if (channelId) {
+    try {
+      const r = await postChannel(botToken, channelId, content);
+      if (!r.ok) {
+        console.warn(`WARN channel ${channelId}: HTTP ${r.status || "fail"}`);
+      }
+    } catch (e) {
+      console.warn(`WARN channel: ${e instanceof Error ? e.message : e}`);
+    }
+    await sleep(200);
+  }
   for (const user of users) {
     try {
       await sendDm(botToken, user.id, content);
@@ -194,6 +246,27 @@ async function broadcast(botToken, users, content) {
     }
     await sleep(350);
   }
+}
+
+async function formatDigest() {
+  const disk = await readDisk();
+  const mem = await readMem();
+  const load = await readLoad();
+  const docker = await runCmd("docker", ["ps", "-a", "--format", "{{.State}}"]);
+  let running = 0;
+  let total = 0;
+  if (docker.ok) {
+    for (const line of docker.stdout.split("\n")) {
+      if (!line.trim()) continue;
+      total += 1;
+      if (line.trim() === "running") running += 1;
+    }
+  }
+  const diskTxt = disk ? `${disk.mount} ${disk.usePct}%` : "n/a";
+  const memTxt = mem ? `${mem.usePct}%` : "n/a";
+  const loadTxt = load === null ? "n/a" : String(load);
+  const dockerTxt = total ? `${running}/${total} running` : "n/a";
+  return `[Qadbak] Status · RAM ${memTxt} · disk ${diskTxt} · load ${loadTxt} · Docker ${dockerTxt}`;
 }
 
 function cooled(state, id, now, windowMs = COOLDOWN_MS) {
@@ -492,15 +565,54 @@ async function alertsEnabled() {
   return row.enabled !== false;
 }
 
+async function discordBotContainerUp() {
+  const r = await runCmd("docker", ["ps", "--format", "{{.Names}}"]);
+  if (!r.ok) return false;
+  return r.stdout.split("\n").some((n) => n.startsWith("qadbak-discord-bot-"));
+}
+
 async function tick() {
   const cfg = normalizeConfig(await readJson(CONFIG_PATH, {}));
-  if (!cfg.enabled || !cfg.botToken) return;
+  if (!cfg.enabled || !cfg.botToken) {
+    return;
+  }
   if (!(await alertsEnabled())) return;
   const users = await loadSubscribers();
-  if (users.length === 0) return;
   const state = (await readJson(STATE_PATH, {})) || {};
   const now = Date.now();
+  const discovered = await discoverChannel(
+    cfg.botToken,
+    cfg.updatesChannelId || state.updatesChannelId || "",
+  );
+  if (discovered) state.updatesChannelId = discovered;
+  const containerOwnsGuild = await discordBotContainerUp();
+  const channelId = containerOwnsGuild ? "" : discovered;
+  if (!channelId && users.length === 0) {
+    if (!containerOwnsGuild && !state.loggedNoTarget) {
+      console.warn(
+        "qadbak-discord-notify: invite the bot to a Discord server (or Link my Discord) so updates have a destination",
+      );
+      state.loggedNoTarget = true;
+      await writeJson(STATE_PATH, state);
+    }
+    if (!containerOwnsGuild) return;
+    if (users.length === 0) {
+      await writeJson(STATE_PATH, state);
+      return;
+    }
+  }
   const queue = [];
+  if (!containerOwnsGuild && !state.helloSent && channelId) {
+    queue.push(
+      "[Qadbak] Live updates staan aan. Je krijgt hier serverstatus, Docker, installs en storingen.",
+    );
+    state.helloSent = true;
+  }
+  const lastDigest = Number(state.digestAt || 0);
+  if (!lastDigest || now - lastDigest >= DIGEST_MS) {
+    queue.push(await formatDigest());
+    state.digestAt = now;
+  }
   await checkMetrics(state, now, queue);
   await checkPm2(state, now, queue);
   await checkNginx(state, now, queue);
@@ -511,7 +623,7 @@ async function tick() {
   await checkGitHead(state, now, queue);
   const unique = [...new Set(queue)];
   for (const msg of unique.slice(0, 8)) {
-    await broadcast(cfg.botToken, users, msg);
+    await broadcast(cfg.botToken, users, channelId, msg);
   }
   await writeJson(STATE_PATH, state);
 }

@@ -152,6 +152,22 @@ fi
 echo "==> Restart (load .env.local into pm2)"
 run_as_qadbak "cd '$ROOT' && bash scripts/pm2-restart-qadbak.sh"
 
+if [[ "$(id -u)" -eq 0 ]] && command -v docker >/dev/null && [[ -d "$ROOT/integrations/discord-bot" ]]; then
+  echo "==> Refresh Discord bot containers"
+  shopt -s nullglob
+  for compose in /home/*/apps/discord-bot/docker-compose.yml; do
+    appdir="$(dirname "$compose")/app"
+    mkdir -p "$appdir"
+    cp -a "$ROOT/integrations/discord-bot/." "$appdir/"
+    if docker compose -f "$compose" build bot && docker compose -f "$compose" up -d; then
+      echo "    OK $(dirname "$compose")"
+    else
+      echo "    WARN: could not rebuild $compose" >&2
+    fi
+  done
+  shopt -u nullglob
+fi
+
 if [[ "$UPDATE_MODE" == "full" ]] && [[ "$(id -u)" -eq 0 ]] && [[ -f "$ROOT/scripts/repair-panel-access.sh" ]]; then
   echo ""
   echo "==> Panel access (panel.<domain> + main host — fixes Cloudflare 520)"

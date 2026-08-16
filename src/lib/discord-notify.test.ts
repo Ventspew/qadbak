@@ -19,6 +19,7 @@ describe("discord-notify config", () => {
       clientSecret: "",
       publicKey: "",
       invite: "",
+      updatesChannelId: "",
       enabled: true,
     });
   });

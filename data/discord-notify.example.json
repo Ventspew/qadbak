@@ -4,5 +4,6 @@
   "clientSecret": "",
   "publicKey": "",
   "invite": "",
+  "updatesChannelId": "",
   "enabled": true
 }

@@ -77,9 +77,16 @@ async function loadPanelDiscordNotify() {
       clientId: String(o.clientId || "").trim(),
       clientSecret: String(o.clientSecret || "").trim(),
       invite: String(o.invite || "").trim(),
+      updatesChannelId: String(o.updatesChannelId || "").trim(),
     };
   } catch {
-    return { botToken: "", clientId: "", clientSecret: "", invite: "" };
+    return {
+      botToken: "",
+      clientId: "",
+      clientSecret: "",
+      invite: "",
+      updatesChannelId: "",
+    };
   }
 }
 
@@ -200,6 +207,7 @@ function buildCompose({
   discordInvite,
   sessionSecret,
   statusTokenValue,
+  updatesChannelId,
 }) {
   return `services:
   bot:
@@ -220,6 +228,7 @@ function buildCompose({
       SESSION_SECRET: ${yamlQuote(sessionSecret)}
       SUBSCRIBERS_PATH: /data/discord-subscribers.json
       TASKS_PATH: /data/tasks.json
+      DISCORD_UPDATES_CHANNEL: ${yamlQuote(updatesChannelId)}
       STATUS_URL: "http://host.docker.internal:3000/api/internal/discord-status"
       STATUS_TOKEN: ${yamlQuote(statusTokenValue)}
     volumes:
@@ -268,6 +277,37 @@ export async function discordBotInstall(domain, payloadJson) {
     panelDiscord.invite ||
     existing?.discordInvite ||
     "";
+  const updatesChannelId =
+    sanitizeSecret(payload.updatesChannelId) ||
+    panelDiscord.updatesChannelId ||
+    existing?.updatesChannelId ||
+    "";
+
+  if (discordBotToken) {
+    const notifyPath = path.join(QADBAK_DIR, "data", "discord-notify.json");
+    const next = {
+      botToken: discordBotToken,
+      clientId: discordClientId,
+      clientSecret: discordClientSecret || panelDiscord.clientSecret,
+      publicKey: "",
+      invite: discordInvite,
+      updatesChannelId,
+      enabled: true,
+    };
+    try {
+      const cur = JSON.parse(await readFile(notifyPath, "utf8"));
+      if (cur && typeof cur === "object") {
+        if (!next.botToken) next.botToken = String(cur.botToken || "");
+        if (!next.clientSecret) next.clientSecret = String(cur.clientSecret || "");
+        if (!next.publicKey) next.publicKey = String(cur.publicKey || "");
+        if (!next.updatesChannelId) next.updatesChannelId = String(cur.updatesChannelId || "");
+      }
+    } catch {
+      /* create */
+    }
+    await mkdir(path.dirname(notifyPath), { recursive: true });
+    await writeFile(notifyPath, `${JSON.stringify(next, null, 2)}\n`);
+  }
 
   const panelRecipes = await loadPanelRecipes();
   const recipes =
@@ -298,6 +338,7 @@ export async function discordBotInstall(domain, payloadJson) {
     discordInvite,
     sessionSecret,
     statusTokenValue,
+    updatesChannelId,
   });
   assertComposePolicyYaml(compose);
   await writeFile(composePath, compose, "utf8");

@@ -28,6 +28,9 @@ SUB_PATH = Path(os.environ.get("SUBSCRIBERS_PATH", "/data/discord-subscribers.js
 TASKS_PATH = Path(os.environ.get("TASKS_PATH", "/data/tasks.json"))
 STATUS_URL = os.environ.get("STATUS_URL", "").strip()
 STATUS_TOKEN = os.environ.get("STATUS_TOKEN", "").strip()
+UPDATES_CHANNEL = os.environ.get("DISCORD_UPDATES_CHANNEL", "").strip()
+WATCH_PATH = Path(os.environ.get("WATCH_STATE_PATH", "/data/host-watch.json"))
+DIGEST_SEC = 30 * 60
 
 lock = threading.Lock()
 oauth_states: dict[str, float] = {}
@@ -78,6 +81,14 @@ def enabled_tasks(kind: str) -> list[dict]:
         if str(row.get("type") or "") == kind:
             out.append(row)
     return out
+
+
+def alerts_enabled() -> bool:
+    rows = load_tasks().get("tasks") or []
+    for row in rows:
+        if isinstance(row, dict) and str(row.get("type") or "") == "qadbak.alerts":
+            return row.get("enabled") is not False
+    return True
 
 
 def sign(value: str) -> str:
@@ -193,6 +204,40 @@ def format_minecraft(snap: dict | None) -> str:
     players = mc.get("players") or []
     extra = f"\nPlayers: {', '.join(players)}" if players else "\nNo players listed."
     return f"Minecraft is **{state}**. Join: `{join}`{extra}"
+
+
+def snapshot_events(prev: dict, snap: dict | None) -> list[str]:
+    if not snap:
+        return []
+    msgs: list[str] = []
+    disks = snap.get("disks") or []
+    root = next((d for d in disks if d.get("mount") == "/"), disks[0] if disks else None)
+    if root and int(root.get("usePct") or 0) >= 85:
+        key = f"{root.get('mount')}:{root.get('usePct')}"
+        if prev.get("disk_alert") != key:
+            msgs.append(f"[Qadbak] Disk {root.get('mount')} at {root.get('usePct')}%.")
+            prev["disk_alert"] = key
+    mem = int(snap.get("memoryUsePct") or 0)
+    if mem >= 90 and prev.get("mem_alert") != mem:
+        msgs.append(f"[Qadbak] RAM at {mem}%.")
+        prev["mem_alert"] = mem
+    docker = {c.get("name"): c.get("state") for c in (snap.get("docker") or []) if c.get("name")}
+    old = prev.get("docker") or {}
+    if old:
+        for name, st in docker.items():
+            if old.get(name) == "running" and st in ("exited", "dead"):
+                msgs.append(f"[Qadbak] Docker container {name} {st}.")
+            if old.get(name) in ("exited", "dead") and st == "running":
+                msgs.append(f"[Qadbak] Docker container {name} is running again.")
+    prev["docker"] = docker
+    mc = snap.get("minecraft") or {}
+    if mc.get("installed"):
+        online = bool(mc.get("online"))
+        was = prev.get("mc_online")
+        if was is not None and was != online:
+            msgs.append(f"[Qadbak] Minecraft is {'online' if online else 'offline'}.")
+        prev["mc_online"] = online
+    return msgs
 
 
 def html_page(body: str) -> bytes:
@@ -463,6 +508,8 @@ def start_bot() -> None:
         await rebuild_tree()
         if not reload_tasks.is_running():
             reload_tasks.start()
+        if not host_watch.is_running():
+            host_watch.start()
 
     @bot.event
     async def on_member_join(member: discord.Member):
@@ -514,6 +561,60 @@ def start_bot() -> None:
             return
         last_mtime["v"] = mtime
         await rebuild_tree()
+
+    async def resolve_updates_channel():
+        if UPDATES_CHANNEL:
+            try:
+                ch = bot.get_channel(int(UPDATES_CHANNEL)) or await bot.fetch_channel(int(UPDATES_CHANNEL))
+                if ch is not None:
+                    return ch
+            except Exception:
+                pass
+        for guild in bot.guilds:
+            me = guild.me
+            if guild.system_channel is not None:
+                perms = guild.system_channel.permissions_for(me)
+                if perms.send_messages:
+                    return guild.system_channel
+            for ch in guild.text_channels:
+                if ch.permissions_for(me).send_messages:
+                    return ch
+        return None
+
+    async def post_update(text: str) -> None:
+        channel = await resolve_updates_channel()
+        if channel is None:
+            print("WARN updates: bot is not in a server/channel it can talk in — click Invite", flush=True)
+            return
+        try:
+            await channel.send(text[:1900])
+        except Exception as e:
+            print(f"WARN updates send: {e}", flush=True)
+
+    @tasks.loop(seconds=45)
+    async def host_watch():
+        if not alerts_enabled():
+            return
+        state = load_json(WATCH_PATH, {})
+        if not isinstance(state, dict):
+            state = {}
+        now = time.time()
+        snap = await asyncio.to_thread(host_snapshot)
+        msgs: list[str] = []
+        if not state.get("helloSent"):
+            msgs.append(
+                f"[Qadbak] **{BOT_NAME}** stuurt hier live updates: status, Docker, Minecraft, installs."
+            )
+            state["helloSent"] = True
+        last = float(state.get("digestAt") or 0)
+        if not last or now - last >= DIGEST_SEC:
+            msgs.append("[Qadbak] " + format_status(snap).replace("\n", " · "))
+            state["digestAt"] = now
+        msgs.extend(snapshot_events(state, snap))
+        save_json(WATCH_PATH, state)
+        for msg in msgs[:6]:
+            await post_update(msg)
+            await asyncio.sleep(0.4)
 
     try:
         bot.run(BOT_TOKEN)

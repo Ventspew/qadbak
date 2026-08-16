@@ -9,6 +9,7 @@ type DiscordSettings = {
   clientId: string;
   clientSecretSet: boolean;
   invite: string;
+  updatesChannelId: string;
   redirectUri: string;
   inviteUrl: string;
 };
@@ -59,6 +60,7 @@ export function AdminDiscordPage() {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [invite, setInvite] = useState("");
+  const [updatesChannelId, setUpdatesChannelId] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [announceChannel, setAnnounceChannel] = useState("");
   const [announceMessage, setAnnounceMessage] = useState("");
@@ -79,6 +81,7 @@ export function AdminDiscordPage() {
       setSettings(data.settings);
       setClientId(data.settings.clientId ?? "");
       setInvite(data.settings.invite ?? "");
+      setUpdatesChannelId(data.settings.updatesChannelId ?? "");
       setEnabled(Boolean(data.settings.enabled));
       setBotToken("");
       setClientSecret("");
@@ -123,7 +126,12 @@ export function AdminDiscordPage() {
     setError("");
     setSuccess("");
     try {
-      const body: Record<string, unknown> = { clientId, invite, enabled };
+      const body: Record<string, unknown> = {
+        clientId,
+        invite,
+        updatesChannelId,
+        enabled,
+      };
       if (botToken.trim()) body.botToken = botToken.trim();
       if (clientSecret.trim()) body.clientSecret = clientSecret.trim();
       const res = await fetch("/api/admin/discord", {
@@ -338,7 +346,7 @@ export function AdminDiscordPage() {
         </p>
         <label className="flex items-center gap-2 text-sm text-panel-muted">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          Enable host Discord DMs
+          Enable host Discord updates
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -374,6 +382,18 @@ export function AdminDiscordPage() {
               placeholder="https://discord.gg/..."
               onChange={(e) => setInvite(e.target.value)}
             />
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Updates channel ID (optional)</Label>
+            <Input
+              value={updatesChannelId}
+              placeholder="Leave empty — first channel the bot can talk in"
+              onChange={(e) => setUpdatesChannelId(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-panel-muted">
+              Discord → right-click channel → Copy Channel ID (Developer Mode). After Invite,
+              the bot posts status here without anyone linking DMs.
+            </p>
           </div>
           <div className="sm:col-span-2">
             <Label>Panel OAuth2 Redirect URI</Label>
