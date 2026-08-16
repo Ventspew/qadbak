@@ -124,14 +124,29 @@ def http_json(url: str, *, data: dict | None = None, headers: dict | None = None
     hdrs = {"User-Agent": "QadbakDiscordBot/1.0", "Accept": "application/json"}
     if headers:
         hdrs.update(headers)
-    if data is not None:
-        raw = urllib.parse.urlencode(data).encode()
-        hdrs["Content-Type"] = "application/x-www-form-urlencoded"
-        req = urllib.request.Request(url, data=raw, headers=hdrs, method=method)
-    else:
-        req = urllib.request.Request(url, headers=hdrs, method=method)
-    with urllib.request.urlopen(req, timeout=20) as res:
-        return json.loads(res.read().decode() or "{}")
+    try:
+        if data is not None:
+            raw = urllib.parse.urlencode(data).encode()
+            hdrs["Content-Type"] = "application/x-www-form-urlencoded"
+            req = urllib.request.Request(url, data=raw, headers=hdrs, method=method)
+        else:
+            req = urllib.request.Request(url, headers=hdrs, method=method)
+        with urllib.request.urlopen(req, timeout=20) as res:
+            return json.loads(res.read().decode() or "{}")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")[:800]
+        print(f"WARN HTTP {e.code} {url}: {body}", flush=True)
+        try:
+            parsed = json.loads(body) if body else {}
+            if isinstance(parsed, dict):
+                parsed.setdefault("error", f"http_{e.code}")
+                return parsed
+        except Exception:
+            pass
+        return {"error": body or f"http_{e.code}"}
+    except Exception as e:
+        print(f"WARN HTTP {url}: {e}", flush=True)
+        return {"error": str(e)}
 
 
 def discord_json(method: str, path: str, payload: dict | None = None) -> dict:
@@ -316,6 +331,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
+        try:
+            self._do_GET()
+        except Exception as e:
+            print(f"WARN GET {self.path}: {e}", flush=True)
+            try:
+                self.send_html(
+                    500,
+                    html_page(
+                        "<p>Discord login failed. Open <a href='/login'>/login</a> again "
+                        "(the callback code is single-use).</p>"
+                    ),
+                )
+            except Exception:
+                pass
+
+    def _do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         qs = urllib.parse.parse_qs(parsed.query)
@@ -374,7 +405,16 @@ class Handler(BaseHTTPRequestHandler):
             )
             access = token.get("access_token")
             if not access:
-                self.send_html(400, html_page("<p>Discord did not return a token.</p>"))
+                err = str(token.get("error") or token.get("error_description") or "no token")
+                self.send_html(
+                    400,
+                    html_page(
+                        "<p>Discord did not return a token. "
+                        f"Check the OAuth2 redirect URI is exactly <code>{PUBLIC_URL}/auth/callback</code>.</p>"
+                        f"<p class='muted'>{err}</p>"
+                        "<p><a class='btn' href='/login'>Try again</a></p>"
+                    ),
+                )
                 return
             me = http_json(
                 "https://discord.com/api/v10/users/@me",

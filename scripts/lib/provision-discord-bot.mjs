@@ -233,6 +233,12 @@ function buildCompose({
       STATUS_TOKEN: ${yamlQuote(statusTokenValue)}
     volumes:
       - ${dataDir}:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/status', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
 `;
 }
 
@@ -365,7 +371,7 @@ export async function discordBotInstall(domain, payloadJson) {
     wwwRedirect: "none",
   });
   await mkdir(path.join(appsDir, "www"), { recursive: true });
-  await upsertProxy(botHost, "/", `http://127.0.0.1:${httpPort}/`);
+  await upsertProxy(botHost, "/", `http://127.0.0.1:${httpPort}`);
   await reloadNginx(botHost, user);
   await sslIssue(botHost, botHost).catch(() => {});
 
