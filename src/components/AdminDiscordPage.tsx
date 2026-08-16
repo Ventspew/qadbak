@@ -230,6 +230,8 @@ export function AdminDiscordPage() {
       setTesting(false);
     }
   }
+
+  async function testDm() {
     setTesting(true);
     setError("");
     setSuccess("");
