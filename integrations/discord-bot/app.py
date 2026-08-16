@@ -595,34 +595,48 @@ def start_bot() -> None:
         last_mtime["v"] = mtime
         await rebuild_tree()
 
-    async def resolve_updates_channel():
+    async def writable_text_channels():
+        found = []
         if UPDATES_CHANNEL:
             try:
                 ch = bot.get_channel(int(UPDATES_CHANNEL)) or await bot.fetch_channel(int(UPDATES_CHANNEL))
                 if ch is not None:
-                    return ch
+                    found.append(ch)
             except Exception:
                 pass
         for guild in bot.guilds:
             me = guild.me
+            candidates = []
             if guild.system_channel is not None:
-                perms = guild.system_channel.permissions_for(me)
-                if perms.send_messages:
-                    return guild.system_channel
-            for ch in guild.text_channels:
-                if ch.permissions_for(me).send_messages:
-                    return ch
-        return None
+                candidates.append(guild.system_channel)
+            candidates.extend(guild.text_channels)
+            for ch in candidates:
+                if ch in found:
+                    continue
+                try:
+                    if ch.permissions_for(me).send_messages:
+                        found.append(ch)
+                except Exception:
+                    continue
+        return found
 
-    async def post_update(text: str) -> None:
-        channel = await resolve_updates_channel()
-        if channel is None:
-            print("WARN updates: bot is not in a server/channel it can talk in — click Invite", flush=True)
-            return
-        try:
-            await channel.send(text[:1900])
-        except Exception as e:
-            print(f"WARN updates send: {e}", flush=True)
+    async def post_update(text: str) -> bool:
+        channels = await writable_text_channels()
+        if not channels:
+            print(
+                f"WARN updates: guilds={len(bot.guilds)} but no writable text channel",
+                flush=True,
+            )
+            return False
+        ok = False
+        for channel in channels:
+            try:
+                await channel.send(text[:1900])
+                ok = True
+                break
+            except Exception as e:
+                print(f"WARN updates #{getattr(channel, 'name', channel.id)}: {e}", flush=True)
+        return ok
 
     @tasks.loop(seconds=45)
     async def host_watch():
@@ -638,16 +652,21 @@ def start_bot() -> None:
             msgs.append(
                 f"[Qadbak] **{BOT_NAME}** stuurt hier live updates: status, Docker, Minecraft, installs."
             )
-            state["helloSent"] = True
         last = float(state.get("digestAt") or 0)
         if not last or now - last >= DIGEST_SEC:
             msgs.append("[Qadbak] " + format_status(snap).replace("\n", " · "))
-            state["digestAt"] = now
         msgs.extend(snapshot_events(state, snap))
-        save_json(WATCH_PATH, state)
+        posted_any = False
         for msg in msgs[:6]:
-            await post_update(msg)
+            if await post_update(msg):
+                posted_any = True
             await asyncio.sleep(0.4)
+        if posted_any:
+            if not state.get("helloSent"):
+                state["helloSent"] = True
+            if not last or now - last >= DIGEST_SEC:
+                state["digestAt"] = now
+            save_json(WATCH_PATH, state)
 
     @bot.event
     async def on_ready():

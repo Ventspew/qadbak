@@ -127,12 +127,41 @@ export function discordBotReady(cfg: DiscordNotifyConfig): boolean {
 }
 
 export async function loadDiscordNotifyConfig(): Promise<DiscordNotifyConfig> {
+  let cfg: DiscordNotifyConfig = { ...DEFAULTS };
   try {
     const raw = await fs.readFile(CONFIG_PATH, "utf8");
-    return normalizeDiscordNotifyConfig(JSON.parse(raw));
+    cfg = normalizeDiscordNotifyConfig(JSON.parse(raw));
   } catch {
-    return { ...DEFAULTS };
+    cfg = { ...DEFAULTS };
   }
+  if (cfg.botToken) return cfg;
+  const dir = path.join(process.cwd(), "data", "domain-config");
+  let names: string[] = [];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return cfg;
+  }
+  for (const name of names) {
+    for (const file of ["discord-bot.json", "minecraft.json"]) {
+      try {
+        const raw = await fs.readFile(path.join(dir, name, file), "utf8");
+        const o = JSON.parse(raw) as Record<string, unknown>;
+        const token = String(o.discordBotToken || "").trim();
+        if (!token) continue;
+        return normalizeDiscordNotifyConfig({
+          ...cfg,
+          botToken: token,
+          clientId: cfg.clientId || String(o.discordClientId || ""),
+          clientSecret: cfg.clientSecret || String(o.discordClientSecret || ""),
+          invite: cfg.invite || String(o.discordInvite || ""),
+        });
+      } catch {
+        /* skip */
+      }
+    }
+  }
+  return cfg;
 }
 
 export async function saveDiscordNotifyConfig(

@@ -102,6 +102,33 @@ function normalizeConfig(raw) {
   };
 }
 
+async function loadRuntimeConfig() {
+  const panel = normalizeConfig(await readJson(CONFIG_PATH, {}));
+  if (panel.botToken) return { ...panel, tokenSource: "panel" };
+  const dir = path.join(DATA, "domain-config");
+  let names = [];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return { ...panel, tokenSource: "none" };
+  }
+  for (const name of names) {
+    for (const file of ["discord-bot.json", "minecraft.json"]) {
+      const row = await readJson(path.join(dir, name, file), null);
+      const token = String(row?.discordBotToken || "").trim();
+      if (!token) continue;
+      return {
+        botToken: token,
+        updatesChannelId:
+          panel.updatesChannelId || String(row?.updatesChannelId || "").trim(),
+        enabled: panel.enabled,
+        tokenSource: file,
+      };
+    }
+  }
+  return { ...panel, tokenSource: "none" };
+}
+
 function normalizeUsers(raw) {
   const users = [];
   const map = raw && typeof raw === "object" ? raw.users : null;
@@ -206,37 +233,56 @@ async function postChannel(botToken, channelId, content) {
   return { ok: r.ok, status: r.status };
 }
 
-async function discoverChannel(botToken, preferred) {
-  if (preferred && /^\d{5,32}$/.test(preferred)) return preferred;
+async function listTextChannels(botToken) {
+  const ids = [];
   const guilds = await discordApi(botToken, "GET", "/users/@me/guilds");
   const list = Array.isArray(guilds.json) ? guilds.json : [];
+  if (!guilds.ok) {
+    console.warn(`WARN guilds HTTP ${guilds.status}`);
+  }
   for (const g of list) {
     const guildId = String(g?.id || "");
     if (!guildId) continue;
     const chs = await discordApi(botToken, "GET", `/guilds/${guildId}/channels`);
     const channels = Array.isArray(chs.json) ? chs.json : [];
     const text = channels.filter((c) => c?.type === 0 && c?.id);
-    const named = text.find((c) =>
+    const named = text.filter((c) =>
       /general|chat|updates|qadbak|status/i.test(String(c.name || "")),
     );
-    const pick = named || text[0];
-    if (pick?.id) return String(pick.id);
+    for (const c of [...named, ...text]) {
+      const id = String(c.id);
+      if (!ids.includes(id)) ids.push(id);
+    }
+  }
+  return ids;
+}
+
+async function postToAnyChannel(botToken, preferred, content) {
+  const tried = new Set();
+  const candidates = [
+    ...(preferred && /^\d{5,32}$/.test(preferred) ? [preferred] : []),
+    ...(await listTextChannels(botToken)),
+  ];
+  for (const channelId of candidates) {
+    if (tried.has(channelId)) continue;
+    tried.add(channelId);
+    const r = await postChannel(botToken, channelId, content);
+    if (r.ok) return channelId;
+    console.warn(`WARN channel ${channelId}: HTTP ${r.status || "fail"}`);
+    await sleep(200);
   }
   return "";
 }
 
-async function broadcast(botToken, users, channelId, content) {
-  if (!botToken) return;
-  if (channelId) {
-    try {
-      const r = await postChannel(botToken, channelId, content);
-      if (!r.ok) {
-        console.warn(`WARN channel ${channelId}: HTTP ${r.status || "fail"}`);
-      }
-    } catch (e) {
-      console.warn(`WARN channel: ${e instanceof Error ? e.message : e}`);
-    }
-    await sleep(200);
+async function broadcast(botToken, users, preferredChannelId, content) {
+  if (!botToken) return preferredChannelId || "";
+  let used = preferredChannelId || "";
+  try {
+    const posted = await postToAnyChannel(botToken, preferredChannelId, content);
+    if (posted) used = posted;
+    else console.warn("WARN: could not post in any Discord text channel");
+  } catch (e) {
+    console.warn(`WARN channel: ${e instanceof Error ? e.message : e}`);
   }
   for (const user of users) {
     try {
@@ -246,6 +292,7 @@ async function broadcast(botToken, users, channelId, content) {
     }
     await sleep(350);
   }
+  return used;
 }
 
 async function formatDigest() {
@@ -566,7 +613,7 @@ async function alertsEnabled() {
 }
 
 async function tick() {
-  const cfg = normalizeConfig(await readJson(CONFIG_PATH, {}));
+  const cfg = await loadRuntimeConfig();
   if (!cfg.enabled || !cfg.botToken) {
     return;
   }
@@ -574,34 +621,16 @@ async function tick() {
   const users = await loadSubscribers();
   const state = (await readJson(STATE_PATH, {})) || {};
   const now = Date.now();
-  const channelId = await discoverChannel(
-    cfg.botToken,
-    cfg.updatesChannelId || state.updatesChannelId || "",
-  );
-  if (channelId) state.updatesChannelId = channelId;
-  if (!channelId && users.length === 0) {
-    if (!state.loggedNoTarget) {
-      console.warn(
-        "qadbak-discord-notify: invite the bot to a Discord server (Add to Discord) so it can post updates",
-      );
-      state.loggedNoTarget = true;
-      await writeJson(STATE_PATH, state);
-    }
-    return;
-  }
+  let channelId = cfg.updatesChannelId || state.updatesChannelId || "";
   const queue = [];
-  if (channelId && state.helloChannelId !== channelId) {
+  if (state.helloVersion !== 2) {
     queue.push(
       "[Qadbak] Live updates staan aan. Je krijgt hier serverstatus, Docker, installs en storingen.",
     );
-    state.helloSent = true;
-    state.helloChannelId = channelId;
   }
   const lastDigest = Number(state.digestAt || 0);
-  if (!lastDigest || now - lastDigest >= DIGEST_MS) {
-    queue.push(await formatDigest());
-    state.digestAt = now;
-  }
+  const wantDigest = !lastDigest || now - lastDigest >= DIGEST_MS;
+  if (wantDigest) queue.push(await formatDigest());
   await checkMetrics(state, now, queue);
   await checkPm2(state, now, queue);
   await checkNginx(state, now, queue);
@@ -610,15 +639,36 @@ async function tick() {
   await checkHelperLog(state, queue);
   await checkUpdateJobs(state, queue);
   await checkGitHead(state, now, queue);
+  if (!channelId && users.length === 0 && queue.length === 0) {
+    return;
+  }
   const unique = [...new Set(queue)];
+  let posted = false;
   for (const msg of unique.slice(0, 8)) {
-    await broadcast(cfg.botToken, users, channelId, msg);
+    const used = await broadcast(cfg.botToken, users, channelId, msg);
+    if (used) {
+      posted = true;
+      channelId = used;
+      state.updatesChannelId = used;
+      state.helloSent = true;
+      state.helloVersion = 2;
+      state.helloChannelId = used;
+      if (wantDigest) state.digestAt = now;
+    }
+  }
+  if (!posted && unique.length > 0) {
+    console.warn(
+      `qadbak-discord-notify: token from ${cfg.tokenSource} but no writable Discord channel`,
+    );
   }
   await writeJson(STATE_PATH, state);
 }
 
 async function main() {
-  console.log(`qadbak-discord-notify root=${ROOT} interval=${INTERVAL_MS}ms`);
+  const cfg = await loadRuntimeConfig();
+  console.log(
+    `qadbak-discord-notify root=${ROOT} interval=${INTERVAL_MS}ms token=${cfg.tokenSource} enabled=${cfg.enabled}`,
+  );
   for (;;) {
     try {
       await tick();
