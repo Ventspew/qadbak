@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import html
 import json
 import os
 import re
@@ -13,9 +14,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from http.cookies import SimpleCookie
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from aiohttp import web
 
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "http://127.0.0.1:8787").rstrip("/")
 BOT_NAME = os.environ.get("BOT_NAME", "Qadbak").strip() or "Qadbak"
@@ -118,6 +119,39 @@ def invite_url() -> str:
         f"?client_id={urllib.parse.quote(CLIENT_ID)}"
         "&permissions=85056&scope=bot%20applications.commands"
     )
+
+
+def esc(value: str) -> str:
+    return html.escape(str(value or ""), quote=True)
+
+
+def safe_http_url(url: str) -> str:
+    u = (url or "").strip()
+    if u.startswith("https://") or u.startswith("http://"):
+        return u
+    return ""
+
+
+def safe_invite(url: str) -> str:
+    u = (url or "").strip()
+    if u.startswith("https://discord.gg/") or u.startswith("https://discord.com/invite/"):
+        return u
+    return ""
+
+
+def html_redirect_page(url: str) -> bytes:
+    """200 HTML redirect — Cloudflare/nginx 502 on empty 302s from stdlib http.server."""
+    target = safe_http_url(url) or "/"
+    href = esc(target)
+    return (
+        "<!DOCTYPE html><html lang='en'><head>"
+        "<meta charset='utf-8'/>"
+        f"<meta http-equiv='refresh' content='0;url={href}'/>"
+        "<title>Continue</title></head><body>"
+        f"<p>Continue to <a href='{href}'>Discord</a>.</p>"
+        f"<script>location.replace({json.dumps(target)});</script>"
+        "</body></html>"
+    ).encode()
 
 
 def http_json(url: str, *, data: dict | None = None, headers: dict | None = None, method: str = "GET") -> dict:
@@ -261,12 +295,17 @@ def html_page(body: str) -> bytes:
         login = '<p><a class="btn" href="/login">Link Discord for DMs</a></p>'
     invite = invite_url()
     invite_html = (
-        f'<p><a class="btn" href="{invite}">Add this bot to your Discord server</a></p>'
+        f'<p><a class="btn" href="{esc(invite)}">Add this bot to your Discord server</a></p>'
         "<p>Zonder Invite kan de bot nergens posten en geen DMs sturen.</p>"
         if invite
         else ""
     )
-    guild = f'<p class="muted">Guild invite: <a href="{GUILD_INVITE}">{GUILD_INVITE}</a></p>' if GUILD_INVITE else ""
+    guild_url = safe_invite(GUILD_INVITE)
+    guild = (
+        f'<p class="muted">Guild invite: <a href="{esc(guild_url)}">{esc(guild_url)}</a></p>'
+        if guild_url
+        else ""
+    )
     tasks = load_tasks().get("tasks") or []
     slashes = []
     for row in tasks:
@@ -284,7 +323,7 @@ def html_page(body: str) -> bytes:
     page = f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>{BOT_NAME}</title>
+<title>{esc(BOT_NAME)}</title>
 <style>
 body {{ font-family: ui-sans-serif, system-ui, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; min-height:100vh; display:grid; place-items:center; }}
 main {{ max-width: 38rem; padding: 2rem; }}
@@ -294,7 +333,7 @@ p {{ color:#94a3b8; line-height:1.55; }}
 .ok {{ color:#86efac; }} .muted {{ font-size:.9rem; }}
 code {{ background:#1e293b; padding:.15rem .4rem; border-radius:.35rem; }}
 </style></head><body><main>
-<h1>{BOT_NAME}</h1>
+<h1>{esc(BOT_NAME)}</h1>
 <p>Qadbak Discord bot — no-code tasks, host alerts, and slash commands.</p>
 {invite_html}
 {login}
@@ -306,166 +345,176 @@ code {{ background:#1e293b; padding:.15rem .4rem; border-radius:.35rem; }}
     return page.encode()
 
 
-class Handler(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
+NO_STORE = {"Cache-Control": "private, no-store, no-cache, must-revalidate"}
 
-    def log_message(self, fmt: str, *args) -> None:
-        print(fmt % args, flush=True)
 
-    def cookie_user(self) -> str | None:
-        raw = self.headers.get("Cookie", "")
-        jar = SimpleCookie()
-        jar.load(raw)
-        morsel = jar.get("qdb")
-        if not morsel:
-            return None
-        return unsign(morsel.value)
+def html_resp(
+    body: bytes, status: int = 200, cookie: tuple[str, str] | None = None
+) -> web.Response:
+    resp = web.Response(body=body, status=status, content_type="text/html", charset="utf-8")
+    resp.headers.update(NO_STORE)
+    resp.force_close()
+    if cookie:
+        resp.set_cookie(
+            cookie[0],
+            cookie[1],
+            max_age=2592000,
+            httponly=True,
+            samesite="Lax",
+            path="/",
+            secure=True,
+        )
+    return resp
 
-    def send_html(self, code: int, body: bytes, cookie: str | None = None) -> None:
-        self.send_response(code)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Connection", "close")
-        if cookie:
-            self.send_header("Set-Cookie", cookie)
-        self.end_headers()
-        self.wfile.write(body)
-        self.close_connection = True
 
-    def redirect(self, loc: str, cookie: str | None = None) -> None:
-        self.send_response(302)
-        self.send_header("Location", loc)
-        self.send_header("Content-Length", "0")
-        self.send_header("Connection", "close")
-        if cookie:
-            self.send_header("Set-Cookie", cookie)
-        self.end_headers()
-        self.close_connection = True
+@web.middleware
+async def close_mw(request: web.Request, handler):
+    try:
+        resp = await handler(request)
+    except web.HTTPException as exc:
+        exc.force_close()
+        raise
+    except Exception as e:
+        print(f"WARN GET {request.path}: {e}", flush=True)
+        resp = html_resp(
+            html_page(
+                "<p>Discord login failed. Open <a href='/login'>/login</a> again "
+                "(the callback code is single-use).</p>"
+            ),
+            500,
+        )
+    resp.force_close()
+    resp.headers.setdefault("Cache-Control", "private, no-store, no-cache, must-revalidate")
+    return resp
 
-    def do_GET(self) -> None:  # noqa: N802
-        try:
-            self._do_GET()
-        except Exception as e:
-            print(f"WARN GET {self.path}: {e}", flush=True)
-            try:
-                self.send_html(
-                    500,
-                    html_page(
-                        "<p>Discord login failed. Open <a href='/login'>/login</a> again "
-                        "(the callback code is single-use).</p>"
-                    ),
-                )
-            except Exception:
-                pass
 
-    def _do_GET(self) -> None:
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-        qs = urllib.parse.parse_qs(parsed.query)
+async def handle_status(_request: web.Request) -> web.Response:
+    payload = json.dumps(
+        {
+            "ok": True,
+            "discord": discord_enabled(),
+            "invite": invite_url() or None,
+            "bot": BOT_NAME,
+        }
+    )
+    resp = web.Response(text=payload, content_type="application/json")
+    resp.headers.update(NO_STORE)
+    resp.force_close()
+    return resp
 
-        if path == "/api/status":
-            payload = json.dumps(
-                {"ok": True, "discord": discord_enabled(), "invite": invite_url() or None, "bot": BOT_NAME}
-            ).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(payload)))
-            self.send_header("Connection", "close")
-            self.end_headers()
-            self.wfile.write(payload)
-            self.close_connection = True
-            return
 
-        if path == "/login":
-            if not discord_enabled():
-                self.send_html(200, html_page("<p>Discord OAuth is not configured yet.</p>"))
-                return
-            state = hashlib.sha256(os.urandom(16)).hexdigest()[:24]
-            with lock:
-                oauth_states[state] = time.time()
-            params = urllib.parse.urlencode(
-                {
-                    "client_id": CLIENT_ID,
-                    "redirect_uri": f"{PUBLIC_URL}/auth/callback",
-                    "response_type": "code",
-                    "scope": "identify",
-                    "state": state,
-                    "prompt": "consent",
-                }
-            )
-            self.redirect(f"https://discord.com/oauth2/authorize?{params}")
-            return
+async def handle_login(_request: web.Request) -> web.Response:
+    if not discord_enabled():
+        return html_resp(html_page("<p>Discord OAuth is not configured yet.</p>"))
+    state = hashlib.sha256(os.urandom(16)).hexdigest()[:24]
+    with lock:
+        oauth_states[state] = time.time()
+    params = urllib.parse.urlencode(
+        {
+            "client_id": CLIENT_ID,
+            "redirect_uri": f"{PUBLIC_URL}/auth/callback",
+            "response_type": "code",
+            "scope": "identify",
+            "state": state,
+            "prompt": "consent",
+        }
+    )
+    return html_resp(html_redirect_page(f"https://discord.com/oauth2/authorize?{params}"))
 
-        if path == "/auth/callback":
-            if not discord_enabled():
-                self.send_html(400, html_page("<p>Discord is not configured.</p>"))
-                return
-            state = (qs.get("state") or [""])[0]
-            code = (qs.get("code") or [""])[0]
-            with lock:
-                ts = oauth_states.pop(state, None)
-            if not ts or time.time() - ts > 600 or not code:
-                self.send_html(400, html_page("<p>Login expired. Try again.</p>"))
-                return
-            token = http_json(
-                "https://discord.com/api/v10/oauth2/token",
-                data={
-                    "client_id": CLIENT_ID,
-                    "client_secret": CLIENT_SECRET,
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "redirect_uri": f"{PUBLIC_URL}/auth/callback",
-                },
-            )
-            access = token.get("access_token")
-            if not access:
-                err = str(token.get("error") or token.get("error_description") or "no token")
-                self.send_html(
-                    400,
-                    html_page(
-                        "<p>Discord did not return a token. "
-                        f"Check the OAuth2 redirect URI is exactly <code>{PUBLIC_URL}/auth/callback</code>.</p>"
-                        f"<p class='muted'>{err}</p>"
-                        "<p><a class='btn' href='/login'>Try again</a></p>"
-                    ),
-                )
-                return
-            me = http_json(
-                "https://discord.com/api/v10/users/@me",
-                headers={"Authorization": f"Bearer {access}"},
-            )
-            uid = str(me.get("id") or "")
-            username = str(me.get("username") or "user")
-            if not uid:
-                self.send_html(400, html_page("<p>Could not read Discord user.</p>"))
-                return
-            data = load_subs()
-            data.setdefault("users", {})[uid] = {
-                "id": uid,
-                "username": username,
-                "notify": True,
-                "linkedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            }
-            save_subs(data)
-            try:
-                extra = f"\nJoin the Discord first so DMs work: {GUILD_INVITE}" if GUILD_INVITE else ""
-                send_dm(uid, f"Linked to **{BOT_NAME}**. You will get Qadbak host updates here.{extra}")
-                note = f'<p class="ok">Hi @{username} — check your Discord DMs.</p>'
-            except Exception:
-                note = (
-                    f'<p class="ok">Hi @{username}, you are linked.</p>'
-                    "<p>If no DM arrived: add the bot to a shared server, allow DMs, then /login again.</p>"
-                )
-            cookie = f"qdb={sign(uid)}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax"
-            self.send_html(200, html_page(note), cookie=cookie)
-            return
 
-        uid = self.cookie_user()
-        extra = ""
-        if uid:
-            row = load_subs().get("users", {}).get(uid) or {}
-            extra = f'<p class="ok">Linked as Discord @{row.get("username", uid)}.</p>'
-        self.send_html(200, html_page(extra))
+async def handle_callback(request: web.Request) -> web.Response:
+    if not discord_enabled():
+        return html_resp(html_page("<p>Discord is not configured.</p>"), 400)
+    state = request.query.get("state", "")
+    code = request.query.get("code", "")
+    with lock:
+        ts = oauth_states.pop(state, None)
+    if not ts or time.time() - ts > 600 or not code:
+        return html_resp(html_page("<p>Login expired. Try again.</p>"), 400)
+    token = await asyncio.to_thread(
+        http_json,
+        "https://discord.com/api/v10/oauth2/token",
+        data={
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": f"{PUBLIC_URL}/auth/callback",
+        },
+    )
+    access = token.get("access_token")
+    if not access:
+        err = str(token.get("error") or token.get("error_description") or "no token")
+        return html_resp(
+            html_page(
+                "<p>Discord did not return a token. "
+                f"Check the OAuth2 redirect URI is exactly <code>{esc(PUBLIC_URL)}/auth/callback</code>.</p>"
+                f"<p class='muted'>{esc(err)}</p>"
+                "<p><a class='btn' href='/login'>Try again</a></p>"
+            ),
+            400,
+        )
+    me = await asyncio.to_thread(
+        http_json,
+        "https://discord.com/api/v10/users/@me",
+        headers={"Authorization": f"Bearer {access}"},
+    )
+    uid = str(me.get("id") or "")
+    username = str(me.get("username") or "user")
+    if not uid:
+        return html_resp(html_page("<p>Could not read Discord user.</p>"), 400)
+    data = load_subs()
+    data.setdefault("users", {})[uid] = {
+        "id": uid,
+        "username": username,
+        "notify": True,
+        "linkedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    save_subs(data)
+    try:
+        extra = f"\nJoin the Discord first so DMs work: {GUILD_INVITE}" if safe_invite(GUILD_INVITE) else ""
+        await asyncio.to_thread(
+            send_dm,
+            uid,
+            f"Linked to **{BOT_NAME}**. You will get Qadbak host updates here.{extra}",
+        )
+        note = f'<p class="ok">Hi @{esc(username)} — check your Discord DMs.</p>'
+    except Exception:
+        note = (
+            f'<p class="ok">Hi @{esc(username)}, you are linked.</p>'
+            "<p>If no DM arrived: add the bot to a shared server, allow DMs, then /login again.</p>"
+        )
+    return html_resp(html_page(note), cookie=("qdb", sign(uid)))
+
+
+async def handle_index(request: web.Request) -> web.Response:
+    uid = unsign(request.cookies.get("qdb") or "")
+    extra = ""
+    if uid:
+        row = load_subs().get("users", {}).get(uid) or {}
+        extra = f'<p class="ok">Linked as Discord @{esc(str(row.get("username", uid)))}.</p>'
+    return html_resp(html_page(extra))
+
+
+def make_http_app() -> web.Application:
+    app = web.Application(middlewares=[close_mw])
+    app.router.add_get("/api/status", handle_status)
+    app.router.add_get("/login", handle_login)
+    app.router.add_get("/auth/callback", handle_callback)
+    app.router.add_get("/", handle_index)
+    return app
+
+
+async def serve_http() -> None:
+    port = int(os.environ.get("PORT", "8787"))
+    runner = web.AppRunner(make_http_app(), access_log=None)
+    await runner.setup()
+    await web.TCPSite(runner, "0.0.0.0", port).start()
+    print(
+        f"discord-bot on :{port} public={PUBLIC_URL} discord={discord_enabled()} name={BOT_NAME}",
+        flush=True,
+    )
+    await asyncio.Event().wait()
 
 
 def slash_name(params: dict, fallback: str) -> str:
@@ -698,13 +747,7 @@ def start_bot() -> None:
 
 def main() -> None:
     threading.Thread(target=start_bot, daemon=True).start()
-    port = int(os.environ.get("PORT", "8787"))
-    httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
-    print(
-        f"discord-bot on :{port} public={PUBLIC_URL} discord={discord_enabled()} name={BOT_NAME}",
-        flush=True,
-    )
-    httpd.serve_forever()
+    asyncio.run(serve_http())
 
 
 if __name__ == "__main__":

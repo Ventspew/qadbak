@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { discordOauthReturnPath } from "./discord-admin-oauth";
 import {
   discordBotInviteUrl,
   normalizeDiscordBotRecipes,
@@ -36,5 +37,14 @@ describe("discord bot recipes", () => {
     expect(url).toContain("client_id=123456789");
     expect(url).toContain("scope=bot%20applications.commands");
     expect(url).not.toMatch(/token/i);
+  });
+});
+
+describe("discord oauth return path", () => {
+  it("sends admin OAuth back to the admin page and everyone else to /discord", async () => {
+    const { discordOauthReturnPath } = await import("./discord-oauth-return");
+    expect(discordOauthReturnPath("abc.admin")).toBe("/admin/discord");
+    expect(discordOauthReturnPath("abc.public")).toBe("/discord");
+    expect(discordOauthReturnPath("legacy-state")).toBe("/discord");
   });
 });

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-api";
 import { handleApiError } from "@/lib/api";
+import { applyNoStoreHeaders } from "@/lib/discord-admin-oauth";
 import {
   DISCORD_OAUTH_COOKIE,
   discordOAuthConfigured,
@@ -19,11 +20,11 @@ export async function GET(request: Request) {
     const redirectUri = discordAdminRedirectUri(origin);
     const cfg = await loadDiscordNotifyConfig();
     if (!discordOAuthConfigured(cfg)) {
-      return NextResponse.redirect(
-        `${origin}/admin/discord?discord=need-oauth`,
+      return applyNoStoreHeaders(
+        NextResponse.redirect(`${origin}/admin/discord?discord=need-oauth`),
       );
     }
-    const state = randomBytes(16).toString("hex");
+    const state = `${randomBytes(16).toString("hex")}.admin`;
     const params = new URLSearchParams({
       client_id: cfg.clientId,
       redirect_uri: redirectUri,
@@ -32,8 +33,10 @@ export async function GET(request: Request) {
       state,
       prompt: "consent",
     });
-    const res = NextResponse.redirect(
-      `https://discord.com/oauth2/authorize?${params.toString()}`,
+    const res = applyNoStoreHeaders(
+      NextResponse.redirect(
+        `https://discord.com/oauth2/authorize?${params.toString()}`,
+      ),
     );
     res.cookies.set(DISCORD_OAUTH_COOKIE, signDiscordOAuthState(state), {
       httpOnly: true,

@@ -10,7 +10,7 @@ export const discordBotTemplate: AppTemplate = {
     "Hosts a Discord bot on your VPS. Paste a Developer Portal token once (or reuse the " +
     "panel bot), click Invite to add it to your server, then assign slash commands, " +
     "keyword replies, welcomes, and Qadbak alerts in the panel — no coding. " +
-    "Public page at bot.yourdomain.com.",
+    "Public page at bot.yourdomain.com, plus /discord on the panel for invite and DM linking.",
   etaSeconds: 180,
   inputs: [
     {
@@ -45,7 +45,7 @@ export const discordBotTemplate: AppTemplate = {
       name: "discordClientId",
       label: "Discord OAuth client ID (optional)",
       type: "text",
-      help: "Leave empty to reuse panel Discord OAuth. Redirect: https://bot.yourdomain/auth/callback",
+      help: "Leave empty to reuse panel Discord OAuth. Add both https://YOUR-PANEL/auth/callback and https://bot.yourdomain/auth/callback in the Discord Developer Portal.",
     },
     {
       name: "discordClientSecret",

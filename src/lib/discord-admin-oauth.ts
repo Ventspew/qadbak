@@ -10,7 +10,14 @@ import {
   upsertPanelSubscriber,
   verifyDiscordOAuthState,
 } from "@/lib/discord-notify";
+import { discordOauthReturnPath } from "@/lib/discord-oauth-return";
 import { discordAdminRedirectUri, panelPublicOrigin } from "@/lib/panel-origin";
+
+export function applyNoStoreHeaders(res: NextResponse): NextResponse {
+  res.headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
+  res.headers.set("CDN-Cache-Control", "no-store");
+  return res;
+}
 
 function clearOauthCookie(res: NextResponse, secure: boolean) {
   res.cookies.set(DISCORD_OAUTH_COOKIE, "", {
@@ -30,16 +37,19 @@ export async function handleDiscordAdminOAuthCallback(
   const origin = panelPublicOrigin(request);
   const redirectUri = discordAdminRedirectUri(origin);
   const secure = origin.startsWith("https://");
-  const fail = (code: string) =>
-    clearOauthCookie(
-      NextResponse.redirect(`${origin}/admin/discord?discord=${code}`),
-      secure,
-    );
-
   try {
     const url = new URL(request.url);
     const code = url.searchParams.get("code")?.trim() || "";
     const state = url.searchParams.get("state")?.trim() || "";
+    const dest = discordOauthReturnPath(state);
+    const fail = (err: string) =>
+      clearOauthCookie(
+        applyNoStoreHeaders(
+          NextResponse.redirect(`${origin}${dest}?discord=${err}`),
+        ),
+        secure,
+      );
+
     const jar = await cookies();
     const cookieVal = jar.get(DISCORD_OAUTH_COOKIE)?.value || "";
     if (!code || !state || !verifyDiscordOAuthState(cookieVal, state)) {
@@ -68,10 +78,17 @@ export async function handleDiscordAdminOAuthCallback(
       ).catch(() => undefined);
     }
     return clearOauthCookie(
-      NextResponse.redirect(`${origin}/admin/discord?discord=linked`),
+      applyNoStoreHeaders(
+        NextResponse.redirect(`${origin}${dest}?discord=linked`),
+      ),
       secure,
     );
   } catch {
-    return fail("error");
+    return clearOauthCookie(
+      applyNoStoreHeaders(
+        NextResponse.redirect(`${origin}/discord?discord=error`),
+      ),
+      secure,
+    );
   }
 }

@@ -424,8 +424,9 @@ export async function discordBotInstall(domain, payloadJson) {
         ? `Add the bot to Discord (one click): ${botInvite}`
         : "Paste a bot token + OAuth client id/secret on /admin/discord, then re-run this install or click Invite.",
       `Public page: ${publicUrl}`,
+      `Invite and link Discord on the panel (works even if the bot subdomain is down): /discord`,
       `Assign slash commands and replies without code at the panel: /admin/discord`,
-      `Player/admin OAuth redirect: ${publicUrl}auth/callback`,
+      `OAuth redirect URIs to add in Discord Developer Portal: ${publicUrl}/auth/callback and the panel /auth/callback`,
       "In Discord Developer Portal enable Message Content + Server Members intents for keyword replies and welcomes.",
     ],
   };

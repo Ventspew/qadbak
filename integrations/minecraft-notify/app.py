@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import json
 import os
 import re
@@ -71,6 +72,31 @@ def unsign(token: str) -> str | None:
 
 def discord_enabled() -> bool:
     return bool(BOT_TOKEN and CLIENT_ID and CLIENT_SECRET)
+
+
+def esc(value: str) -> str:
+    return html.escape(str(value or ""), quote=True)
+
+
+def safe_http_url(url: str) -> str:
+    u = (url or "").strip()
+    if u.startswith("https://") or u.startswith("http://") or u == "/":
+        return u
+    return ""
+
+
+def html_redirect_page(url: str) -> bytes:
+    target = safe_http_url(url) or "/"
+    href = esc(target)
+    return (
+        "<!DOCTYPE html><html lang='en'><head>"
+        "<meta charset='utf-8'/>"
+        f"<meta http-equiv='refresh' content='0;url={href}'/>"
+        "<title>Continue</title></head><body>"
+        f"<p>Continue to <a href='{href}'>the next page</a>.</p>"
+        f"<script>location.replace({json.dumps(target)});</script>"
+        "</body></html>"
+    ).encode()
 
 
 def http_json(url: str, *, data: dict | None = None, headers: dict | None = None, method: str = "GET") -> dict:
@@ -233,7 +259,7 @@ button {{ background:#334155; color:#fff; border:0; padding:.55rem .9rem; border
 
 
 class Handler(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
+    protocol_version = "HTTP/1.0"
 
     def log_message(self, fmt: str, *args) -> None:
         print(fmt % args, flush=True)
@@ -247,26 +273,32 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return unsign(morsel.value)
 
-    def send_html(self, code: int, body: bytes) -> None:
+    def send_html(self, code: int, body: bytes, cookie: str | None = None) -> None:
         self.send_response(code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "private, no-store, no-cache, must-revalidate")
         self.send_header("Connection", "close")
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
         self.wfile.write(body)
         self.close_connection = True
 
     def redirect(self, loc: str, cookie: str | None = None) -> None:
-        self.send_response(302)
-        self.send_header("Location", loc)
-        self.send_header("Content-Length", "0")
-        self.send_header("Connection", "close")
-        if cookie:
-            self.send_header("Set-Cookie", cookie)
-        self.end_headers()
-        self.close_connection = True
+        self.send_html(200, html_redirect_page(loc), cookie=cookie)
 
     def do_GET(self) -> None:  # noqa: N802
+        try:
+            self._do_GET()
+        except Exception as e:
+            print(f"WARN GET {self.path}: {e}", flush=True)
+            try:
+                self.send_html(500, html_page("<p>Something went wrong. Open this page again.</p>"))
+            except Exception:
+                pass
+
+    def _do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         qs = urllib.parse.parse_qs(parsed.query)
@@ -276,8 +308,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "private, no-store")
+            self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(payload)
+            self.close_connection = True
             return
 
         if path == "/login":
@@ -359,10 +394,10 @@ class Handler(BaseHTTPRequestHandler):
                     uid,
                     f"Linked to **{MOTD}**. You will get join/leave and online/offline updates here.{extra}\nJoin address: `{JOIN_ADDRESS}`",
                 )
-                note = f'<p class="ok">Hi @{username} — check your Discord DMs.</p>'
+                note = f'<p class="ok">Hi @{esc(username)} — check your Discord DMs.</p>'
             except Exception:
                 note = (
-                    f'<p class="ok">Hi @{username}, you are linked.</p>'
+                    f'<p class="ok">Hi @{esc(username)}, you are linked.</p>'
                     '<p>If no DM arrived: add the bot to a shared Discord server, allow DMs from server members, then /login again.</p>'
                 )
             cookie = f"qmc={sign(uid)}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax"
@@ -371,21 +406,17 @@ class Handler(BaseHTTPRequestHandler):
                 + '<form method="post" action="/ign"><input name="ign" placeholder="Minecraft name (optional)"/><button>Save</button></form>'
                 + '<p class="muted"><a href="/logout">Disable DM updates</a></p>'
             )
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Set-Cookie", cookie)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self.send_html(200, body, cookie=cookie)
             return
 
         uid = self.cookie_user()
         extra = ""
         if uid:
             row = load_subs().get("users", {}).get(uid) or {}
+            ign = esc(re.sub(r"[^A-Za-z0-9_]", "", str(row.get("ign") or ""))[:16])
             extra = (
-                f'<p class="ok">Logged in as Discord @{row.get("username", uid)}. DMs are {"on" if row.get("notify") else "off"}.</p>'
-                f'<form method="post" action="/ign"><input name="ign" value="{row.get("ign") or ""}" placeholder="Minecraft name"/><button>Save name</button></form>'
+                f'<p class="ok">Logged in as Discord @{esc(str(row.get("username", uid)))}. DMs are {"on" if row.get("notify") else "off"}.</p>'
+                f'<form method="post" action="/ign"><input name="ign" value="{ign}" placeholder="Minecraft name"/><button>Save name</button></form>'
                 '<p class="muted"><a href="/logout">Disable DM updates</a></p>'
             )
         elif not discord_enabled():

@@ -377,7 +377,7 @@ export function AdminDiscordPage() {
           <p className="text-sm text-panel-muted">
             Bot @{bot.username}
             {bot.guilds.length === 0
-              ? " is in 0 servers — click Invite below or the button on bot.inveil.net."
+              ? " is in 0 servers — click Invite below (or open /discord on this panel)."
               : ` is in ${bot.guilds.length} server(s): ${bot.guilds.map((g) => g.name).join(", ")}`}
           </p>
         )}
@@ -474,6 +474,12 @@ export function AdminDiscordPage() {
           <Button variant="secondary" disabled={busy} onClick={() => void testDm()}>
             {testing ? "Sending…" : "Test DM"}
           </Button>
+          <a
+            href="/discord"
+            className="inline-flex items-center justify-center rounded-md border border-panel-border bg-panel-card px-4 py-2 text-sm font-medium text-panel-text hover:bg-panel-bg"
+          >
+            Public Discord page
+          </a>
         </div>
       </Card>
 

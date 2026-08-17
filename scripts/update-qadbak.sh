@@ -152,19 +152,34 @@ fi
 echo "==> Restart (load .env.local into pm2)"
 run_as_qadbak "cd '$ROOT' && bash scripts/pm2-restart-qadbak.sh"
 
-if [[ "$(id -u)" -eq 0 ]] && command -v docker >/dev/null && [[ -d "$ROOT/integrations/discord-bot" ]]; then
-  echo "==> Refresh Discord bot containers"
+if [[ "$(id -u)" -eq 0 ]] && command -v docker >/dev/null; then
   shopt -s nullglob
-  for compose in /home/*/apps/discord-bot/docker-compose.yml; do
-    appdir="$(dirname "$compose")/app"
-    mkdir -p "$appdir"
-    cp -a "$ROOT/integrations/discord-bot/." "$appdir/"
-    if docker compose -f "$compose" build bot && docker compose -f "$compose" up -d; then
-      echo "    OK $(dirname "$compose")"
-    else
-      echo "    WARN: could not rebuild $compose" >&2
-    fi
-  done
+  if [[ -d "$ROOT/integrations/discord-bot" ]]; then
+    echo "==> Refresh Discord bot containers"
+    for compose in /home/*/apps/discord-bot/docker-compose.yml; do
+      appdir="$(dirname "$compose")/app"
+      mkdir -p "$appdir"
+      cp -a "$ROOT/integrations/discord-bot/." "$appdir/"
+      if docker compose -f "$compose" build bot && docker compose -f "$compose" up -d; then
+        echo "    OK $(dirname "$compose")"
+      else
+        echo "    WARN: could not rebuild $compose" >&2
+      fi
+    done
+  fi
+  if [[ -d "$ROOT/integrations/minecraft-notify" ]]; then
+    echo "==> Refresh Minecraft notify pages"
+    for compose in /home/*/apps/minecraft/docker-compose.yml; do
+      notifydir="$(dirname "$compose")/notify"
+      [[ -d "$notifydir" ]] || continue
+      cp -a "$ROOT/integrations/minecraft-notify/." "$notifydir/"
+      if docker compose -f "$compose" build notify && docker compose -f "$compose" up -d notify; then
+        echo "    OK minecraft notify $(dirname "$compose")"
+      else
+        echo "    WARN: could not rebuild minecraft notify $compose" >&2
+      fi
+    done
+  fi
   shopt -u nullglob
 fi
 
