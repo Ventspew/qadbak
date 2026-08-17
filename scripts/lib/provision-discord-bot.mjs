@@ -58,7 +58,7 @@ function inviteUrl(clientId) {
   if (!id) return "";
   return (
     `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(id)}` +
-    `&permissions=85056&scope=bot%20applications.commands`
+    `&permissions=85056&integration_type=0&scope=bot%20applications.commands`
   );
 }
 
@@ -90,16 +90,6 @@ async function loadPanelDiscordNotify() {
   }
 }
 
-async function loadPanelRecipes() {
-  try {
-    const raw = await readFile(path.join(QADBAK_DIR, "data", "discord-bot.json"), "utf8");
-    const o = JSON.parse(raw);
-    return o && typeof o === "object" ? o : null;
-  } catch {
-    return null;
-  }
-}
-
 function seedTasks(payload, botName) {
   const tasks = [];
   if (parseBool(payload.taskAlerts, true)) {
@@ -119,6 +109,22 @@ function seedTasks(payload, botName) {
       enabled: true,
       type: "minecraft.status",
       params: { name: "minecraft", description: "Minecraft server status" },
+    });
+  }
+  if (parseBool(payload.taskHelp, true)) {
+    tasks.push({
+      id: "help",
+      enabled: true,
+      type: "qadbak.help",
+      params: { name: "help", description: "List bot commands" },
+    });
+  }
+  if (parseBool(payload.taskUptime, true)) {
+    tasks.push({
+      id: "uptime",
+      enabled: true,
+      type: "qadbak.uptime",
+      params: { name: "uptime", description: "Bot and host uptime" },
     });
   }
   if (tasks.length === 0) {
@@ -262,69 +268,50 @@ export async function discordBotInstall(domain, payloadJson) {
 
   const existing = await readDomainConfigJson(parent, "discord-bot.json", null);
   const sessionSecret = existing?.sessionSecret || randomBytes(24).toString("hex");
-  const panelDiscord = await loadPanelDiscordNotify();
+  const reuseHost = parseBool(payload.reuseHostBot, false);
+  const panelDiscord = reuseHost ? await loadPanelDiscordNotify() : {
+    botToken: "",
+    clientId: "",
+    clientSecret: "",
+    invite: "",
+    updatesChannelId: "",
+  };
   const discordBotToken =
     sanitizeSecret(payload.discordBotToken) ||
-    panelDiscord.botToken ||
     existing?.discordBotToken ||
+    panelDiscord.botToken ||
     "";
   const discordClientId =
     sanitizeSecret(payload.discordClientId) ||
-    panelDiscord.clientId ||
     existing?.discordClientId ||
+    panelDiscord.clientId ||
     "";
   const discordClientSecret =
     sanitizeSecret(payload.discordClientSecret) ||
-    panelDiscord.clientSecret ||
     existing?.discordClientSecret ||
+    panelDiscord.clientSecret ||
     "";
   const discordInvite =
     sanitizeSecret(payload.discordInvite) ||
-    panelDiscord.invite ||
     existing?.discordInvite ||
+    panelDiscord.invite ||
     "";
   const updatesChannelId =
     sanitizeSecret(payload.updatesChannelId) ||
-    panelDiscord.updatesChannelId ||
     existing?.updatesChannelId ||
+    panelDiscord.updatesChannelId ||
     "";
 
-  if (discordBotToken) {
-    const notifyPath = path.join(QADBAK_DIR, "data", "discord-notify.json");
-    const next = {
-      botToken: discordBotToken,
-      clientId: discordClientId,
-      clientSecret: discordClientSecret || panelDiscord.clientSecret,
-      publicKey: "",
-      invite: discordInvite,
-      updatesChannelId,
-      enabled: true,
-    };
-    try {
-      const cur = JSON.parse(await readFile(notifyPath, "utf8"));
-      if (cur && typeof cur === "object") {
-        if (!next.botToken) next.botToken = String(cur.botToken || "");
-        if (!next.clientSecret) next.clientSecret = String(cur.clientSecret || "");
-        if (!next.publicKey) next.publicKey = String(cur.publicKey || "");
-        if (!next.updatesChannelId) next.updatesChannelId = String(cur.updatesChannelId || "");
-      }
-    } catch {
-      /* create */
-    }
-    await mkdir(path.dirname(notifyPath), { recursive: true });
-    await writeFile(notifyPath, `${JSON.stringify(next, null, 2)}\n`);
+  if (!discordBotToken || !discordClientId) {
+    fail(
+      "Each Discord Bot app needs its own Developer Portal application. " +
+        "Paste that app's bot token and client ID (not the panel host bot). " +
+        "Create one at https://discord.com/developers/applications — Bot + OAuth2.",
+    );
   }
 
-  const panelRecipes = await loadPanelRecipes();
-  const recipes =
-    panelRecipes?.tasks?.length > 0
-      ? { botName: panelRecipes.botName || botName, tasks: panelRecipes.tasks }
-      : seedTasks(payload, botName);
+  const recipes = seedTasks(payload, botName);
   await writeFile(path.join(dataDir, "tasks.json"), `${JSON.stringify(recipes, null, 2)}\n`);
-  await writeFile(
-    path.join(QADBAK_DIR, "data", "discord-bot.json"),
-    `${JSON.stringify(recipes, null, 2)}\n`,
-  );
 
   await copyBotApp(appDir);
   const httpPort = existing?.httpPort || httpPortForDomain(parent);
@@ -417,17 +404,16 @@ export async function discordBotInstall(domain, payloadJson) {
     discordLogin: `${publicUrl}/login`,
     botRedirectUri: `${publicUrl}/auth/callback`,
     slashCommands: (recipes.tasks || [])
-      .filter((t) => t.enabled !== false && ["qadbak.status", "minecraft.status", "slash.reply"].includes(t.type))
+      .filter((t) => t.enabled !== false && ["qadbak.status", "qadbak.help", "qadbak.uptime", "minecraft.status", "slash.reply", "slash.embed", "poll.create"].includes(t.type))
       .map((t) => `/${t.params?.name || t.type}`),
     postInstall: [
       botInvite
-        ? `Add the bot to Discord (one click): ${botInvite}`
-        : "Paste a bot token + OAuth client id/secret on /admin/discord, then re-run this install or click Invite.",
-      `Public page: ${publicUrl}`,
-      `Invite and link Discord on the panel (works even if the bot subdomain is down): /discord`,
-      `Assign slash commands and replies without code at the panel: /admin/discord`,
-      `OAuth redirect URIs to add in Discord Developer Portal: ${publicUrl}/auth/callback and the panel /auth/callback`,
-      "In Discord Developer Portal enable Message Content + Server Members intents for keyword replies and welcomes.",
+        ? `Invite THIS app's bot to YOUR Discord server: ${botInvite}`
+        : "Paste a bot token + client ID from your own Discord application, then re-run.",
+      `Public page for this domain: ${publicUrl}`,
+      `Add OAuth redirect: ${publicUrl}/auth/callback in that same Discord application.`,
+      "Do not reuse the panel host bot — every customer creates their own Discord application.",
+      "Optional: Message Content + Server Members intents for keyword replies, welcomes, and auto-roles.",
     ],
   };
   emit(result);
@@ -478,6 +464,7 @@ export async function discordBotSyncTasks() {
   } catch {
     fail("No discord-bot.json recipes yet.");
   }
+  const host = await loadPanelDiscordNotify();
   const dir = path.join(QADBAK_DIR, "data", "domain-config");
   let domains = [];
   try {
@@ -490,6 +477,8 @@ export async function discordBotSyncTasks() {
   for (const name of domains) {
     const cfg = await readDomainConfigJson(name, "discord-bot.json", null);
     if (!cfg?.dataDir) continue;
+    const clientId = String(cfg.discordClientId || "").trim();
+    if (!host.clientId || clientId !== host.clientId) continue;
     await mkdir(cfg.dataDir, { recursive: true });
     await writeFile(path.join(cfg.dataDir, "tasks.json"), body, "utf8");
     synced += 1;

@@ -179,6 +179,44 @@ function discordBotResult(jobId, input, helper) {
   };
 }
 
+function telegramBotResult(jobId, input, helper) {
+  const domain = String(input.domain || "").trim();
+  const subdomain = String(input.subdomain || "tg").trim() || "tg";
+  const host = helper.subdomain || `${subdomain}.${domain}`;
+  const credentials = [];
+  if (helper.inviteUrl) {
+    credentials.push({
+      label: "Add this bot to YOUR Telegram group",
+      value: helper.inviteUrl,
+      isSecret: false,
+    });
+  }
+  credentials.push({
+    label: "Public page",
+    value: helper.adminUrl || `https://${host}/`,
+    isSecret: false,
+  });
+  if (helper.botUsername) {
+    credentials.push({
+      label: "Bot username",
+      value: `@${String(helper.botUsername).replace(/^@/, "")}`,
+      isSecret: false,
+    });
+  }
+  const postInstall = Array.isArray(helper.postInstall)
+    ? helper.postInstall.join(" ")
+    : helper.postInstall;
+  return {
+    appId: "telegram-bot",
+    domain,
+    primaryUrl: helper.inviteUrl || helper.adminUrl || `https://${host}/`,
+    secondaryUrl: helper.adminUrl || `https://${host}/`,
+    credentials,
+    postInstall,
+    journalId: jobId,
+  };
+}
+
 const TEMPLATES = {
   minecraft: {
     message: "Starting Minecraft Java server (detached from panel)",
@@ -214,9 +252,31 @@ const TEMPLATES = {
         taskAlerts: input.taskAlerts,
         taskStatus: input.taskStatus,
         taskMinecraft: input.taskMinecraft,
+        taskHelp: input.taskHelp,
+        taskUptime: input.taskUptime,
       }),
     ],
     result: discordBotResult,
+  },
+  "telegram-bot": {
+    message: "Starting Telegram bot (detached from panel)",
+    helperArgs: (input) => [
+      "telegram-bot-install",
+      String(input.domain || "").trim(),
+      JSON.stringify({
+        subdomain: String(input.subdomain || "tg").trim() || "tg",
+        botName: String(input.botName || "Qadbak").trim() || "Qadbak",
+        telegramBotToken: String(input.telegramBotToken || "").trim(),
+        telegramBotUsername: String(input.telegramBotUsername || "").trim(),
+        telegramChatId: String(input.telegramChatId || "").trim(),
+        taskAlerts: input.taskAlerts,
+        taskStatus: input.taskStatus,
+        taskMinecraft: input.taskMinecraft,
+        taskHelp: input.taskHelp,
+        taskUptime: input.taskUptime,
+      }),
+    ],
+    result: telegramBotResult,
   },
 };
 

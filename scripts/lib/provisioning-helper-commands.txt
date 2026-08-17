@@ -235,6 +235,10 @@ subdomain-add
 system-awstats-summary
 system-cron-list
 system-network-summary
+telegram-bot-get-tasks
+telegram-bot-install
+telegram-bot-save-tasks
+telegram-bot-status
 ticket-notify
 tickets-create
 tickets-list

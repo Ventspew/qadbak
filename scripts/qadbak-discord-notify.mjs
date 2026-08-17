@@ -104,29 +104,7 @@ function normalizeConfig(raw) {
 
 async function loadRuntimeConfig() {
   const panel = normalizeConfig(await readJson(CONFIG_PATH, {}));
-  if (panel.botToken) return { ...panel, tokenSource: "panel" };
-  const dir = path.join(DATA, "domain-config");
-  let names = [];
-  try {
-    names = await readdir(dir);
-  } catch {
-    return { ...panel, tokenSource: "none" };
-  }
-  for (const name of names) {
-    for (const file of ["discord-bot.json", "minecraft.json"]) {
-      const row = await readJson(path.join(dir, name, file), null);
-      const token = String(row?.discordBotToken || "").trim();
-      if (!token) continue;
-      return {
-        botToken: token,
-        updatesChannelId:
-          panel.updatesChannelId || String(row?.updatesChannelId || "").trim(),
-        enabled: panel.enabled,
-        tokenSource: file,
-      };
-    }
-  }
-  return { ...panel, tokenSource: "none" };
+  return { ...panel, tokenSource: panel.botToken ? "panel" : "none" };
 }
 
 function normalizeUsers(raw) {

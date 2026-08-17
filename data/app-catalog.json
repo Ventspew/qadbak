@@ -339,6 +339,22 @@
     "etaSeconds": 180
   },
   {
+    "id": "telegram-bot",
+    "name": "telegram-bot",
+    "label": "Telegram Bot",
+    "desc": "Host a Telegram bot on your VPS — add it to your group, then use /status /help and host alerts without code",
+    "version": "native",
+    "minPhp": "8.0",
+    "requiresDb": false,
+    "category": "tools",
+    "icon": "✈️",
+    "tagline": "One-click Telegram bot with no-code tasks",
+    "featured": true,
+    "intentMode": "full",
+    "installer": "telegram-bot-install",
+    "etaSeconds": 180
+  },
+  {
     "id": "mybb",
     "name": "mybb",
     "label": "MyBB",

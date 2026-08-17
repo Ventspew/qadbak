@@ -4,13 +4,14 @@ import type { AppTemplate } from "../types";
 export const discordBotTemplate: AppTemplate = {
   id: "discord-bot",
   label: "Discord Bot",
-  tagline: "One-click hosted bot — invite it, then assign tasks without code.",
+  tagline: "Your Discord application, hosted — invite it to your own server.",
   icon: "🤖",
   description:
-    "Hosts a Discord bot on your VPS. Paste a Developer Portal token once (or reuse the " +
-    "panel bot), click Invite to add it to your server, then assign slash commands, " +
-    "keyword replies, welcomes, and Qadbak alerts in the panel — no coding. " +
-    "Public page at bot.yourdomain.com, plus /discord on the panel for invite and DM linking.",
+    "Hosts a Discord bot for this domain. Create a Discord application in the " +
+    "Developer Portal (one per customer), paste that token and client ID, then " +
+    "invite the bot to YOUR server. Slash commands, keywords, welcomes, polls, " +
+    "and alerts are assigned without code. Public page at bot.yourdomain.com. " +
+    "The panel /admin/discord bot is the host operator bot — not this app.",
   etaSeconds: 180,
   inputs: [
     {
@@ -37,48 +38,61 @@ export const discordBotTemplate: AppTemplate = {
     },
     {
       name: "discordBotToken",
-      label: "Discord bot token (optional)",
+      label: "Discord bot token",
       type: "password",
-      help: "Leave empty to reuse the panel bot from /admin/discord.",
+      required: true,
+      help: "From YOUR Discord application → Bot. Never reuse another customer's token.",
     },
     {
       name: "discordClientId",
-      label: "Discord OAuth client ID (optional)",
+      label: "Discord application / client ID",
       type: "text",
-      help: "Leave empty to reuse panel Discord OAuth. Add both https://YOUR-PANEL/auth/callback and https://bot.yourdomain/auth/callback in the Discord Developer Portal.",
+      required: true,
+      help: "Same application as the token. Redirect: https://bot.yourdomain/auth/callback",
     },
     {
       name: "discordClientSecret",
-      label: "Discord OAuth client secret (optional)",
+      label: "Discord OAuth client secret",
       type: "password",
+      help: "Needed for “Link Discord” DMs on the public page.",
     },
     {
       name: "discordInvite",
       label: "Guild invite URL (optional)",
       type: "text",
       placeholder: "https://discord.gg/...",
-      help: "Needed so the bot can DM people (they must share a server).",
+      help: "Your Discord server invite so the bot can DM people who share that server.",
     },
     {
       name: "taskAlerts",
-      label: "Task: Qadbak host alerts (DMs)",
+      label: "Task: host alerts in Discord",
       type: "boolean",
       defaultValue: "true",
-      help: "Disk, RAM, load, nginx/pm2, Docker, app installs, panel updates.",
+      help: "Disk, RAM, load, nginx/pm2, Docker, app installs.",
     },
     {
       name: "taskStatus",
       label: "Task: slash /status",
       type: "boolean",
       defaultValue: "true",
-      help: "Replies with disk, RAM, load, and Docker summary.",
     },
     {
       name: "taskMinecraft",
       label: "Task: slash /minecraft",
       type: "boolean",
       defaultValue: "true",
-      help: "If a Minecraft app exists, replies online/offline (does not duplicate join/leave DMs).",
+    },
+    {
+      name: "taskHelp",
+      label: "Task: slash /help",
+      type: "boolean",
+      defaultValue: "true",
+    },
+    {
+      name: "taskUptime",
+      label: "Task: slash /uptime",
+      type: "boolean",
+      defaultValue: "true",
     },
   ],
   async install({ input }) {
@@ -88,6 +102,11 @@ export const discordBotTemplate: AppTemplate = {
     if (!domain) throw new Error("Domain is required.");
     if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)) {
       throw new Error("Invalid subdomain prefix.");
+    }
+    if (!input.discordBotToken?.trim() || !input.discordClientId?.trim()) {
+      throw new Error(
+        "Bot token and application client ID are required (your own Discord application).",
+      );
     }
 
     const result = (await runProvisioningHelper(
@@ -103,6 +122,8 @@ export const discordBotTemplate: AppTemplate = {
         taskAlerts: input.taskAlerts,
         taskStatus: input.taskStatus,
         taskMinecraft: input.taskMinecraft,
+        taskHelp: input.taskHelp,
+        taskUptime: input.taskUptime,
       }),
     )) as {
       adminUrl?: string;
@@ -118,7 +139,7 @@ export const discordBotTemplate: AppTemplate = {
     const credentials = [];
     if (result.inviteUrl) {
       credentials.push({
-        label: "Invite the bot to Discord",
+        label: "Invite this bot to YOUR Discord server",
         value: result.inviteUrl,
         isSecret: false,
       });
@@ -137,7 +158,7 @@ export const discordBotTemplate: AppTemplate = {
     }
     if (result.botRedirectUri) {
       credentials.push({
-        label: "OAuth redirect URI (Developer Portal)",
+        label: "OAuth redirect URI (this application only)",
         value: result.botRedirectUri,
         isSecret: false,
       });
@@ -157,7 +178,7 @@ export const discordBotTemplate: AppTemplate = {
       credentials,
       postInstall:
         result.postInstall?.join(" ") ??
-        `Open /admin/discord to assign more commands without code. Invite URL: ${result.inviteUrl || "save a client ID first"}.`,
+        `Invite the bot to your Discord server, then add ${result.botRedirectUri || "https://bot.yourdomain/auth/callback"} in that application's OAuth2 redirects.`,
     };
   },
 };

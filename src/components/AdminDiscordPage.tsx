@@ -38,10 +38,16 @@ type BotPresence = {
 };
 
 const TASK_TYPES: Array<{ value: string; label: string; hint: string }> = [
-  { value: "qadbak.alerts", label: "Qadbak alerts (DMs)", hint: "Disk, RAM, load, nginx/pm2, Docker, installs, updates" },
+  { value: "qadbak.alerts", label: "Qadbak alerts (channel)", hint: "Disk, RAM, load, nginx/pm2, Docker, installs" },
   { value: "qadbak.status", label: "Slash /status", hint: "Reply with disk, RAM, load, Docker" },
+  { value: "qadbak.help", label: "Slash /help", hint: "Lists enabled commands" },
+  { value: "qadbak.uptime", label: "Slash /uptime", hint: "Bot uptime plus host snapshot" },
   { value: "minecraft.status", label: "Slash /minecraft", hint: "Online/offline if Minecraft is installed" },
   { value: "slash.reply", label: "Custom slash reply", hint: "Command name + canned text" },
+  { value: "slash.embed", label: "Slash embed", hint: "Rich embed: title, text, color" },
+  { value: "poll.create", label: "Slash /poll", hint: "Ask a question, bot adds 👍👎" },
+  { value: "scheduled.post", label: "Scheduled post", hint: "Repeat a message every N minutes" },
+  { value: "auto.role", label: "Auto-role on join", hint: "Role ID — needs Server Members intent" },
   { value: "keyword.reply", label: "Keyword reply", hint: "If a message contains a word, reply" },
   { value: "welcome", label: "Welcome new members", hint: "Use {user} in the text" },
   { value: "announce", label: "Announce from panel", hint: "Stores the channel ID for Send announcement" },
@@ -369,9 +375,10 @@ export function AdminDiscordPage() {
       <Card className="space-y-4">
         <h2 className="text-lg font-medium text-white">Bot credentials</h2>
         <p className="text-sm text-panel-muted">
-          One bot for the whole Qadbak host. First click <strong>Invite</strong> so
-          the bot joins your Discord server — otherwise there are no channel posts
-          and Discord blocks DMs. Then Link my Discord for DMs.
+          One bot for this Qadbak host (the operator). Customer Discord Bot apps
+          under Apps use their own Discord application and invite URL on{" "}
+          <code>bot.theirdomain</code> — they do not share this token. Click{" "}
+          <strong>Invite</strong> so THIS host bot joins YOUR server.
         </p>
         {bot?.ok && (
           <p className="text-sm text-panel-muted">
@@ -552,7 +559,11 @@ export function AdminDiscordPage() {
               </p>
               {(task.type === "qadbak.status" ||
                 task.type === "minecraft.status" ||
-                task.type === "slash.reply") && (
+                task.type === "qadbak.help" ||
+                task.type === "qadbak.uptime" ||
+                task.type === "slash.reply" ||
+                task.type === "slash.embed" ||
+                task.type === "poll.create") && (
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>
                     <Label>Slash name</Label>
@@ -583,6 +594,70 @@ export function AdminDiscordPage() {
                           setRecipes({ ...recipes, tasks });
                         }}
                       />
+                    </div>
+                  )}
+                  {task.type === "poll.create" && (
+                    <div className="sm:col-span-2">
+                      <Label>Default question (optional)</Label>
+                      <Input
+                        value={task.params.question ?? ""}
+                        placeholder="Yes or no?"
+                        onChange={(e) => {
+                          const tasks = [...recipes.tasks];
+                          tasks[i] = {
+                            ...task,
+                            params: { ...task.params, question: e.target.value },
+                          };
+                          setRecipes({ ...recipes, tasks });
+                        }}
+                      />
+                    </div>
+                  )}
+                  {task.type === "slash.embed" && (
+                    <div className="sm:col-span-2 grid gap-2 sm:grid-cols-2">
+                      <div>
+                        <Label>Title</Label>
+                        <Input
+                          value={task.params.title ?? ""}
+                          onChange={(e) => {
+                            const tasks = [...recipes.tasks];
+                            tasks[i] = {
+                              ...task,
+                              params: { ...task.params, title: e.target.value },
+                            };
+                            setRecipes({ ...recipes, tasks });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Color (hex)</Label>
+                        <Input
+                          value={task.params.color ?? ""}
+                          placeholder="5865F2"
+                          onChange={(e) => {
+                            const tasks = [...recipes.tasks];
+                            tasks[i] = {
+                              ...task,
+                              params: { ...task.params, color: e.target.value },
+                            };
+                            setRecipes({ ...recipes, tasks });
+                          }}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Label>Description</Label>
+                        <Input
+                          value={task.params.text ?? ""}
+                          onChange={(e) => {
+                            const tasks = [...recipes.tasks];
+                            tasks[i] = {
+                              ...task,
+                              params: { ...task.params, text: e.target.value },
+                            };
+                            setRecipes({ ...recipes, tasks });
+                          }}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -630,6 +705,55 @@ export function AdminDiscordPage() {
                       tasks[i] = {
                         ...task,
                         params: { ...task.params, text: e.target.value },
+                      };
+                      setRecipes({ ...recipes, tasks });
+                    }}
+                  />
+                </div>
+              )}
+              {task.type === "scheduled.post" && (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <Label>Every N minutes</Label>
+                    <Input
+                      value={task.params.intervalMinutes ?? "60"}
+                      onChange={(e) => {
+                        const tasks = [...recipes.tasks];
+                        tasks[i] = {
+                          ...task,
+                          params: { ...task.params, intervalMinutes: e.target.value },
+                        };
+                        setRecipes({ ...recipes, tasks });
+                      }}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label>Message</Label>
+                    <Input
+                      value={task.params.text ?? ""}
+                      onChange={(e) => {
+                        const tasks = [...recipes.tasks];
+                        tasks[i] = {
+                          ...task,
+                          params: { ...task.params, text: e.target.value },
+                        };
+                        setRecipes({ ...recipes, tasks });
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              {task.type === "auto.role" && (
+                <div>
+                  <Label>Role ID</Label>
+                  <Input
+                    value={task.params.roleId ?? ""}
+                    placeholder="123456789012345678"
+                    onChange={(e) => {
+                      const tasks = [...recipes.tasks];
+                      tasks[i] = {
+                        ...task,
+                        params: { ...task.params, roleId: e.target.value },
                       };
                       setRecipes({ ...recipes, tasks });
                     }}

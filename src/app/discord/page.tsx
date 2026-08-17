@@ -78,8 +78,10 @@ export default function PublicDiscordPage() {
         <h1 className="text-2xl font-semibold text-panel-text">{brandName} Discord</h1>
         <p className="mt-1 text-sm text-panel-muted">{tagline}</p>
         <p className="mt-4 text-sm text-panel-muted">
-          Invite the bot to your server, then link your Discord account for DMs.
-          This page works on every Qadbak panel — you do not need the bot subdomain.
+          This page invites the <strong>panel host bot</strong> (the operator).
+          Each website that installed the Discord Bot app has its own bot at{" "}
+          <code className="text-slate-300">bot.thatdomain</code> — invite that one
+          to that customer&apos;s Discord server.
         </p>
         {notice ? (
           <div className="mt-4">

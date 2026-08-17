@@ -314,6 +314,18 @@ export const DOMAIN_FEATURES: DomainFeature[] = [
     },
   },
   {
+    id: "telegram",
+    phase: 5,
+    label: "Telegram",
+    description: "No-code tasks for this domain's Telegram bot",
+    path: "telegram",
+    navOrder: 13,
+    programs: {
+      admin: ["list-domains"],
+      client: ["list-domains"],
+    },
+  },
+  {
     id: "runtimes",
     phase: 5,
     label: "Runtimes",

@@ -149,6 +149,12 @@ import {
   discordBotSyncTasks,
 } from "./lib/provision-discord-bot.mjs";
 import {
+  telegramBotInstall,
+  telegramBotStatus,
+  telegramBotGetTasks,
+  telegramBotSaveTasks,
+} from "./lib/provision-telegram-bot.mjs";
+import {
   securityGet,
   securitySetSpam,
   securitySetDkim,
@@ -618,6 +624,18 @@ async function main() {
       break;
     case "discord-bot-sync-tasks":
       await discordBotSyncTasks();
+      break;
+    case "telegram-bot-install":
+      await telegramBotInstall(args[0], args[1]);
+      break;
+    case "telegram-bot-status":
+      await telegramBotStatus(args[0]);
+      break;
+    case "telegram-bot-get-tasks":
+      await telegramBotGetTasks(args[0]);
+      break;
+    case "telegram-bot-save-tasks":
+      await telegramBotSaveTasks(args[0], args[1]);
       break;
     case "script-delete":
       await scriptDelete(args[0], args[1]);

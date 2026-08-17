@@ -33,7 +33,7 @@
     "bcryptjs": "^3.0.2",
     "jose": "^6.0.11",
     "lucide-react": "^0.511.0",
-    "next": "^15.3.3",
+    "next": "^15.5.21",
     "node-pty": "^1.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -48,14 +48,18 @@
     "@types/react": "^19.1.4",
     "@types/react-dom": "^19.1.5",
     "eslint": "^9.27.0",
-    "eslint-config-next": "^15.3.3",
-    "postcss": "^8.5.15",
+    "eslint-config-next": "^15.5.21",
+    "postcss": "^8.5.23",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },
   "overrides": {
-    "postcss": "$postcss"
+    "postcss": "$postcss",
+    "brace-expansion": "2.1.4",
+    "js-yaml": "4.3.1",
+    "nanoid": "3.3.18",
+    "sharp": "0.35.3"
   },
   "engines": {
     "node": ">=20"

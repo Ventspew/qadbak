@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { discordOauthReturnPath } from "./discord-admin-oauth";
 import {
   discordBotInviteUrl,
   normalizeDiscordBotRecipes,
@@ -7,11 +6,13 @@ import {
 } from "./discord-bot-tasks";
 
 describe("discord bot recipes", () => {
-  it("defaults to Qadbak alert/status tasks", () => {
+  it("defaults to Qadbak alert/status/help/uptime tasks", () => {
     const recipes = normalizeDiscordBotRecipes({});
     expect(recipes.botName).toBe("Qadbak");
     expect(recipes.tasks.some((t) => t.type === "qadbak.alerts" && t.enabled)).toBe(true);
     expect(recipes.tasks.some((t) => t.type === "qadbak.status")).toBe(true);
+    expect(recipes.tasks.some((t) => t.type === "qadbak.help")).toBe(true);
+    expect(recipes.tasks.some((t) => t.type === "qadbak.uptime")).toBe(true);
   });
 
   it("drops unknown task types and sanitizes slash names", () => {
@@ -36,6 +37,8 @@ describe("discord bot recipes", () => {
     const url = discordBotInviteUrl("123456789");
     expect(url).toContain("client_id=123456789");
     expect(url).toContain("scope=bot%20applications.commands");
+    expect(url).toContain("integration_type=0");
+    expect(url).toContain("permissions=85056");
     expect(url).not.toMatch(/token/i);
   });
 });

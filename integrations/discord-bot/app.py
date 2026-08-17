@@ -34,6 +34,7 @@ STATUS_TOKEN = os.environ.get("STATUS_TOKEN", "").strip()
 UPDATES_CHANNEL = os.environ.get("DISCORD_UPDATES_CHANNEL", "").strip()
 WATCH_PATH = Path(os.environ.get("WATCH_STATE_PATH", "/data/host-watch.json"))
 DIGEST_SEC = 30 * 60
+BOT_STARTED = time.time()
 
 lock = threading.Lock()
 oauth_states: dict[str, float] = {}
@@ -377,8 +378,14 @@ def html_page(body: str) -> bytes:
             slashes.append("/" + (params.get("name") or "status"))
         elif kind == "minecraft.status":
             slashes.append("/" + (params.get("name") or "minecraft"))
-        elif kind == "slash.reply" and params.get("name"):
+        elif kind == "qadbak.help":
+            slashes.append("/" + (params.get("name") or "help"))
+        elif kind == "qadbak.uptime":
+            slashes.append("/" + (params.get("name") or "uptime"))
+        elif kind == "slash.embed" and params.get("name"):
             slashes.append("/" + str(params.get("name")))
+        elif kind == "poll.create":
+            slashes.append("/" + (params.get("name") or "poll"))
     slash_html = ", ".join(slashes) if slashes else "none yet — assign tasks in the Qadbak panel"
     page = f"""<!DOCTYPE html>
 <html lang="en"><head>
@@ -586,6 +593,32 @@ def slash_name(params: dict, fallback: str) -> str:
     return raw or fallback
 
 
+def slash_commands_from_loaded() -> list[str]:
+    names: list[str] = []
+    for row in load_tasks().get("tasks") or []:
+        if row.get("enabled") is False:
+            continue
+        kind = str(row.get("type") or "")
+        params = row.get("params") or {}
+        if kind == "qadbak.status":
+            names.append("/" + slash_name(params, "status"))
+        elif kind == "minecraft.status":
+            names.append("/" + slash_name(params, "minecraft"))
+        elif kind == "qadbak.help":
+            names.append("/" + slash_name(params, "help"))
+        elif kind == "qadbak.uptime":
+            names.append("/" + slash_name(params, "uptime"))
+        elif kind == "slash.reply":
+            n = slash_name(params, "")
+            if n:
+                names.append("/" + n)
+        elif kind == "slash.embed":
+            names.append("/" + slash_name(params, "info"))
+        elif kind == "poll.create":
+            names.append("/" + slash_name(params, "poll"))
+    return names
+
+
 def start_bot() -> None:
     if not BOT_TOKEN:
         print("discord gateway off (no bot token)", flush=True)
@@ -621,6 +654,29 @@ def start_bot() -> None:
                 text = str(params.get("text") or "OK")[:1900]
                 await interaction.response.send_message(text)
                 return
+            if kind == "qadbak.help" and slash_name(params, "help") == name:
+                listed = slash_commands_from_loaded()
+                await interaction.response.send_message(
+                    "Commands: " + (", ".join(listed) if listed else "none yet"),
+                    ephemeral=True,
+                )
+                return
+            if kind == "qadbak.uptime" and slash_name(params, "uptime") == name:
+                mins = max(1, int((time.time() - BOT_STARTED) / 60))
+                extra = format_status(snap)
+                await interaction.response.send_message(
+                    f"Bot uptime ≈ {mins} min.\n{extra}",
+                    ephemeral=True,
+                )
+                return
+            if kind == "slash.embed" and slash_name(params, "info") == name:
+                title = str(params.get("title") or BOT_NAME)[:256]
+                desc = str(params.get("text") or params.get("description") or "")[:1900]
+                color_raw = re.sub(r"[^0-9a-fA-F]", "", str(params.get("color") or "5865F2"))[:6]
+                color = int(color_raw or "5865F2", 16)
+                embed = discord.Embed(title=title, description=desc or None, color=color)
+                await interaction.response.send_message(embed=embed)
+                return
         await interaction.response.send_message("That command is not assigned.", ephemeral=True)
 
     async def rebuild_tree() -> None:
@@ -642,6 +698,36 @@ def start_bot() -> None:
             elif kind == "slash.reply":
                 name = slash_name(params, "")
                 desc = str(params.get("description") or params.get("text") or "Canned reply")[:100]
+            elif kind == "qadbak.help":
+                name = slash_name(params, "help")
+                desc = str(params.get("description") or "List bot commands")[:100]
+            elif kind == "qadbak.uptime":
+                name = slash_name(params, "uptime")
+                desc = str(params.get("description") or "Bot and host uptime")[:100]
+            elif kind == "slash.embed":
+                name = slash_name(params, "info")
+                desc = str(params.get("description") or params.get("title") or "Embed reply")[:100]
+            elif kind == "poll.create":
+                name = slash_name(params, "poll")
+                desc = str(params.get("description") or "Post a yes/no poll")[:100]
+                if name in names:
+                    continue
+                names.append(name)
+
+                async def _poll(interaction: discord.Interaction, question: str, _n=name, _default=str(params.get("question") or "")):
+                    q = (question or _default or "").strip()[:1800] or "Yes or no?"
+                    await interaction.response.send_message(f"**Poll:** {q}")
+                    msg = await interaction.original_response()
+                    for emoji in ("👍", "👎"):
+                        try:
+                            await msg.add_reaction(emoji)
+                        except Exception:
+                            pass
+
+                bot.tree.add_command(
+                    app_commands.Command(name=name, description=desc or "Poll", callback=_poll)
+                )
+                continue
             if not name or name in names:
                 continue
             names.append(name)
@@ -674,6 +760,17 @@ def start_bot() -> None:
                 await channel.send(text[:1900])
             except Exception as e:
                 print(f"WARN welcome: {e}", flush=True)
+        for row in enabled_tasks("auto.role"):
+            rid = re.sub(r"\D", "", str((row.get("params") or {}).get("roleId") or ""))
+            if not rid:
+                continue
+            role = member.guild.get_role(int(rid))
+            if role is None:
+                continue
+            try:
+                await member.add_roles(role, reason="Qadbak auto.role")
+            except Exception as e:
+                print(f"WARN auto.role: {e}", flush=True)
 
     @bot.event
     async def on_message(message: discord.Message):
@@ -753,32 +850,44 @@ def start_bot() -> None:
 
     @tasks.loop(seconds=45)
     async def host_watch():
-        if not alerts_enabled():
-            return
         state = load_json(WATCH_PATH, {})
         if not isinstance(state, dict):
             state = {}
         now = time.time()
         snap = await asyncio.to_thread(host_snapshot)
         msgs: list[str] = []
-        if not state.get("helloSent"):
-            msgs.append(
-                f"[Qadbak] **{BOT_NAME}** stuurt hier live updates: status, Docker, Minecraft, installs."
-            )
-        last = float(state.get("digestAt") or 0)
-        if not last or now - last >= DIGEST_SEC:
-            msgs.append("[Qadbak] " + format_status(snap).replace("\n", " · "))
-        msgs.extend(snapshot_events(state, snap))
+        if alerts_enabled():
+            if not state.get("helloSent"):
+                msgs.append(
+                    f"[Qadbak] **{BOT_NAME}** stuurt hier live updates: status, Docker, Minecraft, installs."
+                )
+            last = float(state.get("digestAt") or 0)
+            if not last or now - last >= DIGEST_SEC:
+                msgs.append("[Qadbak] " + format_status(snap).replace("\n", " · "))
+            msgs.extend(snapshot_events(state, snap))
+        for row in enabled_tasks("scheduled.post"):
+            text = str((row.get("params") or {}).get("text") or "").strip()
+            if not text:
+                continue
+            mins_raw = re.sub(r"\D", "", str((row.get("params") or {}).get("intervalMinutes") or "60"))
+            mins = max(5, int(mins_raw or "60"))
+            key = f"sched_{row.get('id') or 'post'}"
+            last_s = float(state.get(key) or 0)
+            if not last_s or now - last_s >= mins * 60:
+                msgs.append(text[:1900])
+                state[key] = now
         posted_any = False
         for msg in msgs[:6]:
             if await post_update(msg):
                 posted_any = True
             await asyncio.sleep(0.4)
         if posted_any:
-            if not state.get("helloSent"):
+            if alerts_enabled() and not state.get("helloSent"):
                 state["helloSent"] = True
-            if not last or now - last >= DIGEST_SEC:
-                state["digestAt"] = now
+            if alerts_enabled():
+                last = float(state.get("digestAt") or 0)
+                if not last or now - last >= DIGEST_SEC:
+                    state["digestAt"] = now
             save_json(WATCH_PATH, state)
 
     @bot.event

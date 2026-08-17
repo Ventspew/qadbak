@@ -10,8 +10,14 @@ const USER_AGENT = "QadbakNotify/1.0";
 export const DISCORD_BOT_TASK_TYPES = [
   "qadbak.alerts",
   "qadbak.status",
+  "qadbak.help",
+  "qadbak.uptime",
   "minecraft.status",
   "slash.reply",
+  "slash.embed",
+  "poll.create",
+  "scheduled.post",
+  "auto.role",
   "keyword.reply",
   "welcome",
   "announce",
@@ -47,7 +53,7 @@ export function discordBotInviteUrl(clientId: string): string {
   if (!id) return "";
   return (
     `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(id)}` +
-    `&permissions=85056&scope=bot%20applications.commands`
+    `&permissions=85056&integration_type=0&scope=bot%20applications.commands`
   );
 }
 
@@ -74,6 +80,18 @@ export function defaultDiscordBotTasks(): DiscordBotTask[] {
       enabled: true,
       type: "minecraft.status",
       params: { name: "minecraft", description: "Minecraft server status" },
+    },
+    {
+      id: "help",
+      enabled: true,
+      type: "qadbak.help",
+      params: { name: "help", description: "List bot commands" },
+    },
+    {
+      id: "uptime",
+      enabled: true,
+      type: "qadbak.uptime",
+      params: { name: "uptime", description: "Bot and host uptime" },
     },
   ];
 }
@@ -149,9 +167,21 @@ export function slashCommandsFromTasks(
     } else if (task.type === "minecraft.status") {
       name = slashName(task.params.name, "minecraft");
       description = (task.params.description || "Minecraft server status").slice(0, 100);
+    } else if (task.type === "qadbak.help") {
+      name = slashName(task.params.name, "help");
+      description = (task.params.description || "List bot commands").slice(0, 100);
+    } else if (task.type === "qadbak.uptime") {
+      name = slashName(task.params.name, "uptime");
+      description = (task.params.description || "Bot and host uptime").slice(0, 100);
     } else if (task.type === "slash.reply") {
       name = slashName(task.params.name, "");
       description = (task.params.description || task.params.text || "Canned reply").slice(0, 100);
+    } else if (task.type === "slash.embed") {
+      name = slashName(task.params.name, "info");
+      description = (task.params.description || task.params.title || "Embed reply").slice(0, 100);
+    } else if (task.type === "poll.create") {
+      name = slashName(task.params.name, "poll");
+      description = (task.params.description || "Post a yes/no poll").slice(0, 100);
     }
     if (!name || used.has(name)) continue;
     used.add(name);

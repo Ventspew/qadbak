@@ -282,6 +282,16 @@ function AppInstallSuccess({
         {result.postInstall ? (
           <p className="mt-2 text-sm">{result.postInstall}</p>
         ) : null}
+        {template.id === "telegram-bot" && result.domain ? (
+          <p className="mt-2 text-sm">
+            <a
+              href={`/domains/${encodeURIComponent(result.domain)}/telegram`}
+              className="text-panel-link hover:underline"
+            >
+              Manage Telegram tasks →
+            </a>
+          </p>
+        ) : null}
       </Alert>
 
       <Card className="space-y-3">

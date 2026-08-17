@@ -167,6 +167,19 @@ if [[ "$(id -u)" -eq 0 ]] && command -v docker >/dev/null; then
       fi
     done
   fi
+  if [[ -d "$ROOT/integrations/telegram-bot" ]]; then
+    echo "==> Refresh Telegram bot containers"
+    for compose in /home/*/apps/telegram-bot/docker-compose.yml; do
+      appdir="$(dirname "$compose")/app"
+      mkdir -p "$appdir"
+      cp -a "$ROOT/integrations/telegram-bot/." "$appdir/"
+      if docker compose -f "$compose" build bot && docker compose -f "$compose" up -d; then
+        echo "    OK $(dirname "$compose")"
+      else
+        echo "    WARN: could not rebuild $compose" >&2
+      fi
+    done
+  fi
   if [[ -d "$ROOT/integrations/minecraft-notify" ]]; then
     echo "==> Refresh Minecraft notify pages"
     for compose in /home/*/apps/minecraft/docker-compose.yml; do

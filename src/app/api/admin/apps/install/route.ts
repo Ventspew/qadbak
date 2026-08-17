@@ -14,7 +14,7 @@ export async function GET() {
   return jsonOk({ ok: true, methods: ["POST"] });
 }
 
-const BACKGROUND_TEMPLATES = new Set(["minecraft", "discord-bot"]);
+const BACKGROUND_TEMPLATES = new Set(["minecraft", "discord-bot", "telegram-bot"]);
 
 /** POST /api/admin/apps/install { templateId, input } - orchestrated install. */
 export async function POST(request: Request) {

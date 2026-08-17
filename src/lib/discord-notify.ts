@@ -154,26 +154,8 @@ export async function loadDiscordNotifyConfig(): Promise<DiscordNotifyConfig> {
   } catch {
     cfg = { ...DEFAULTS };
   }
-  if (!discordNotifyNeedsAppFallback(cfg) && cfg.invite) return cfg;
-  const dir = path.join(process.cwd(), "data", "domain-config");
-  let names: string[] = [];
-  try {
-    names = await readdir(dir);
-  } catch {
-    return cfg;
-  }
-  for (const name of names) {
-    for (const file of ["discord-bot.json", "minecraft.json"]) {
-      try {
-        const raw = await fs.readFile(path.join(dir, name, file), "utf8");
-        const o = JSON.parse(raw) as Record<string, unknown>;
-        cfg = mergeDiscordAppCredentials(cfg, o);
-        if (!discordNotifyNeedsAppFallback(cfg) && cfg.invite) return cfg;
-      } catch {
-        /* skip */
-      }
-    }
-  }
+  // Host bot only. Customer Discord Bot apps keep their own token in
+  // domain-config — never reuse that as the panel-wide invite.
   return cfg;
 }
 

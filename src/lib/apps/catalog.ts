@@ -34,6 +34,7 @@ const FALLBACK_ICONS: Record<string, string> = {
   jellyfin: "🎬",
   minecraft: "⛏️",
   "discord-bot": "🤖",
+  "telegram-bot": "✈️",
 };
 
 function normalizeRow(row: Record<string, unknown>): AppCatalogEntry {
@@ -82,6 +83,7 @@ export function catalogEntriesWithIntent(
       e.id !== "wordpress" &&
       e.id !== "jellyfin" &&
       e.id !== "minecraft" &&
-      e.id !== "discord-bot",
+      e.id !== "discord-bot" &&
+      e.id !== "telegram-bot",
   );
 }
