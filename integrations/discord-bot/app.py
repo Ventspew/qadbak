@@ -9,6 +9,7 @@ import html
 import json
 import os
 import re
+import socket
 import threading
 import time
 import urllib.error
@@ -16,6 +17,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import aiohttp
 from aiohttp import web
 
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "http://127.0.0.1:8787").rstrip("/")
@@ -154,6 +156,64 @@ def html_redirect_page(url: str) -> bytes:
     ).encode()
 
 
+def oauth_redirect_uri() -> str:
+    raw = PUBLIC_URL.rstrip("/")
+    if raw.startswith("http://") and "127.0.0.1" not in raw and "localhost" not in raw:
+        raw = "https://" + raw[len("http://") :]
+    return f"{raw}/auth/callback"
+
+
+def sanitize_api_error(raw: str, status: int | None = None) -> str:
+    text = str(raw or "").strip()
+    low = text.lower()
+    if "<html" in low or "<!doctype" in low or "cloudflare" in low or "bad gateway" in low:
+        return f"discord_api_http_{status}" if status else "discord_api_unavailable"
+    line = text.replace("\n", " ").strip()[:160]
+    return line or (f"discord_api_http_{status}" if status else "no_token")
+
+
+async def discord_form_json(
+    url: str, *, data: dict | None = None, headers: dict | None = None
+) -> dict:
+    """Outbound Discord HTTP via aiohttp + IPv4. Never returns HTML error bodies."""
+    hdrs = {"User-Agent": "QadbakDiscordBot/1.0", "Accept": "application/json"}
+    if headers:
+        hdrs.update(headers)
+    timeout = aiohttp.ClientTimeout(total=12)
+    last: dict = {"error": "no_token"}
+    for attempt in range(3):
+        connector = aiohttp.TCPConnector(family=socket.AF_INET)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                if data is not None:
+                    resp_cm = session.post(url, data=data, headers=hdrs)
+                else:
+                    resp_cm = session.get(url, headers=hdrs)
+                async with resp_cm as resp:
+                    body = await resp.text()
+                    parsed: dict = {}
+                    try:
+                        loaded = json.loads(body) if body else {}
+                        if isinstance(loaded, dict):
+                            parsed = loaded
+                    except Exception:
+                        parsed = {}
+                    if resp.ok and parsed:
+                        return parsed
+                    err = (
+                        parsed.get("error_description")
+                        or parsed.get("error")
+                        or sanitize_api_error(body, resp.status)
+                    )
+                    last = {"error": sanitize_api_error(str(err), resp.status)}
+                    if resp.status < 500:
+                        return last
+        except Exception as e:
+            last = {"error": sanitize_api_error(str(e))}
+        await asyncio.sleep(0.45 * (attempt + 1))
+    return last
+
+
 def http_json(url: str, *, data: dict | None = None, headers: dict | None = None, method: str = "GET") -> dict:
     hdrs = {"User-Agent": "QadbakDiscordBot/1.0", "Accept": "application/json"}
     if headers:
@@ -177,10 +237,10 @@ def http_json(url: str, *, data: dict | None = None, headers: dict | None = None
                 return parsed
         except Exception:
             pass
-        return {"error": body or f"http_{e.code}"}
+        return {"error": sanitize_api_error(body or f"http_{e.code}", e.code)}
     except Exception as e:
         print(f"WARN HTTP {url}: {e}", flush=True)
-        return {"error": str(e)}
+        return {"error": sanitize_api_error(str(e))}
 
 
 def discord_json(method: str, path: str, payload: dict | None = None) -> dict:
@@ -412,7 +472,7 @@ async def handle_login(_request: web.Request) -> web.Response:
     params = urllib.parse.urlencode(
         {
             "client_id": CLIENT_ID,
-            "redirect_uri": f"{PUBLIC_URL}/auth/callback",
+            "redirect_uri": oauth_redirect_uri(),
             "response_type": "code",
             "scope": "identify",
             "state": state,
@@ -431,31 +491,35 @@ async def handle_callback(request: web.Request) -> web.Response:
         ts = oauth_states.pop(state, None)
     if not ts or time.time() - ts > 600 or not code:
         return html_resp(html_page("<p>Login expired. Try again.</p>"), 400)
-    token = await asyncio.to_thread(
-        http_json,
+    callback = oauth_redirect_uri()
+    token = await discord_form_json(
         "https://discord.com/api/v10/oauth2/token",
         data={
             "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET,
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": f"{PUBLIC_URL}/auth/callback",
+            "redirect_uri": callback,
         },
     )
     access = token.get("access_token")
     if not access:
-        err = str(token.get("error") or token.get("error_description") or "no token")
+        err = sanitize_api_error(
+            str(token.get("error") or token.get("error_description") or "no_token")
+        )
         return html_resp(
             html_page(
-                "<p>Discord did not return a token. "
-                f"Check the OAuth2 redirect URI is exactly <code>{esc(PUBLIC_URL)}/auth/callback</code>.</p>"
+                "<p>Discord login did not finish. The one-time code is now used — start over.</p>"
+                "<p>In Discord Developer Portal → OAuth2, add this exact redirect URI:</p>"
+                f"<p><code>{esc(callback)}</code></p>"
+                "<p>Also add the panel callback <code>/auth/callback</code> (shown on the Qadbak "
+                "<code>/discord</code> page) so linking works even if this bot page fails.</p>"
                 f"<p class='muted'>{esc(err)}</p>"
-                "<p><a class='btn' href='/login'>Try again</a></p>"
+                "<p><a class='btn' href='/login'>Start over</a></p>"
             ),
             400,
         )
-    me = await asyncio.to_thread(
-        http_json,
+    me = await discord_form_json(
         "https://discord.com/api/v10/users/@me",
         headers={"Authorization": f"Bearer {access}"},
     )

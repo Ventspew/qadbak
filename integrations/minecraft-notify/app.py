@@ -117,6 +117,8 @@ def http_json(url: str, *, data: dict | None = None, headers: dict | None = None
             return json.loads(res.read().decode() or "{}")
     except urllib.error.HTTPError as e:
         err = e.read().decode()[:400]
+        if "<html" in err.lower() or "cloudflare" in err.lower():
+            err = f"http_{e.code}"
         raise RuntimeError(f"Discord HTTP {e.code}: {err}") from e
 
 
@@ -138,6 +140,8 @@ def discord_json(method: str, path: str, payload: dict | None = None) -> dict:
             return json.loads(text) if text else {}
     except urllib.error.HTTPError as e:
         err = e.read().decode()[:400]
+        if "<html" in err.lower() or "cloudflare" in err.lower():
+            err = f"http_{e.code}"
         raise RuntimeError(f"Discord HTTP {e.code}: {err}") from e
 
 

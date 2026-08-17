@@ -433,17 +433,26 @@ export function AdminDiscordPage() {
             </p>
           </div>
           <div className="sm:col-span-2">
-            <Label>Panel OAuth2 Redirect URI</Label>
-            <div className="flex flex-wrap gap-2">
-              <Input readOnly value={settings.redirectUri} className="flex-1" />
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => void copyText(settings.redirectUri, "Redirect URI")}
-              >
-                Copy
-              </Button>
-            </div>
+            <Label>OAuth2 redirect URIs (add every line in Discord Developer Portal)</Label>
+            <p className="mb-2 text-xs text-panel-muted">
+              Use the Invite button here — not Discord&apos;s generated URL (that one asks for
+              Administrator and User Install). Qadbak invite is guild install,{" "}
+              <code>bot</code> + <code>applications.commands</code>.
+            </p>
+            {[settings.redirectUri, ...installs.map((row) => row.botRedirectUri)]
+              .filter((uri, i, all) => uri && all.indexOf(uri) === i)
+              .map((uri) => (
+                <div key={uri} className="mb-2 flex flex-wrap gap-2">
+                  <Input readOnly value={uri} className="flex-1" />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => void copyText(uri, "Redirect URI")}
+                  >
+                    Copy
+                  </Button>
+                </div>
+              ))}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">

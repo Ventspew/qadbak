@@ -126,6 +126,26 @@ export function discordBotReady(cfg: DiscordNotifyConfig): boolean {
   return Boolean(cfg.enabled && cfg.botToken);
 }
 
+/** Fill blank OAuth fields from a hosted app config without overwriting set values. */
+export function mergeDiscordAppCredentials(
+  cfg: DiscordNotifyConfig,
+  app: Record<string, unknown>,
+): DiscordNotifyConfig {
+  return normalizeDiscordNotifyConfig({
+    ...cfg,
+    botToken: cfg.botToken || String(app.discordBotToken || "").trim(),
+    clientId: cfg.clientId || String(app.discordClientId || "").trim(),
+    clientSecret: cfg.clientSecret || String(app.discordClientSecret || "").trim(),
+    invite: cfg.invite || String(app.discordInvite || "").trim(),
+    updatesChannelId:
+      cfg.updatesChannelId || String(app.updatesChannelId || "").trim(),
+  });
+}
+
+export function discordNotifyNeedsAppFallback(cfg: DiscordNotifyConfig): boolean {
+  return !cfg.botToken || !cfg.clientId || !cfg.clientSecret;
+}
+
 export async function loadDiscordNotifyConfig(): Promise<DiscordNotifyConfig> {
   let cfg: DiscordNotifyConfig = { ...DEFAULTS };
   try {
@@ -134,7 +154,7 @@ export async function loadDiscordNotifyConfig(): Promise<DiscordNotifyConfig> {
   } catch {
     cfg = { ...DEFAULTS };
   }
-  if (cfg.botToken) return cfg;
+  if (!discordNotifyNeedsAppFallback(cfg) && cfg.invite) return cfg;
   const dir = path.join(process.cwd(), "data", "domain-config");
   let names: string[] = [];
   try {
@@ -147,15 +167,8 @@ export async function loadDiscordNotifyConfig(): Promise<DiscordNotifyConfig> {
       try {
         const raw = await fs.readFile(path.join(dir, name, file), "utf8");
         const o = JSON.parse(raw) as Record<string, unknown>;
-        const token = String(o.discordBotToken || "").trim();
-        if (!token) continue;
-        return normalizeDiscordNotifyConfig({
-          ...cfg,
-          botToken: token,
-          clientId: cfg.clientId || String(o.discordClientId || ""),
-          clientSecret: cfg.clientSecret || String(o.discordClientSecret || ""),
-          invite: cfg.invite || String(o.discordInvite || ""),
-        });
+        cfg = mergeDiscordAppCredentials(cfg, o);
+        if (!discordNotifyNeedsAppFallback(cfg) && cfg.invite) return cfg;
       } catch {
         /* skip */
       }

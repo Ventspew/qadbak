@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  mergeDiscordAppCredentials,
   mergeDiscordNotifyPatch,
   normalizeDiscordNotifyConfig,
   normalizeSubscribersFile,
@@ -67,6 +68,25 @@ describe("discord-notify config", () => {
     expect(merged.clientId).toBe("new-id");
     expect(merged.invite).toBe("");
     expect(merged.enabled).toBe(false);
+  });
+
+  it("fills missing OAuth fields from a hosted app even when a bot token exists", () => {
+    const cfg = normalizeDiscordNotifyConfig({
+      botToken: "panel-token",
+      clientId: "",
+      clientSecret: "",
+      invite: "",
+    });
+    const merged = mergeDiscordAppCredentials(cfg, {
+      discordBotToken: "app-token-ignored",
+      discordClientId: "1538664643998912632",
+      discordClientSecret: "app-secret",
+      discordInvite: "https://discord.gg/abc",
+    });
+    expect(merged.botToken).toBe("panel-token");
+    expect(merged.clientId).toBe("1538664643998912632");
+    expect(merged.clientSecret).toBe("app-secret");
+    expect(merged.invite).toBe("https://discord.gg/abc");
   });
 });
 

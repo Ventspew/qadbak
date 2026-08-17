@@ -121,7 +121,7 @@ export default function PublicDiscordPage() {
         </div>
         {info?.redirectUri ? (
           <p className="mt-6 text-xs text-panel-muted">
-            Developer Portal redirect URI:{" "}
+            Add this exact redirect URI in Discord Developer Portal → OAuth2:{" "}
             <code className="break-all text-slate-300">{info.redirectUri}</code>
           </p>
         ) : null}
