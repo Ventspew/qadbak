@@ -124,7 +124,7 @@ export function TelegramBotManager({
       <DomainPageHeader
         domain={domain}
         title="Telegram"
-        description="No-code tasks for this domain's BotFather bot — not the Discord bot, and not another customer's token."
+        description="No-code tasks for the BotFather bot on this domain — not Discord, and not another customer token."
       />
       {error && <Alert>{error}</Alert>}
       {success && <Alert variant="success">{success}</Alert>}
@@ -190,8 +190,8 @@ export function TelegramBotManager({
         <Card className="space-y-4">
           <h2 className="text-lg font-medium text-white">No-code tasks</h2>
           <p className="text-sm text-panel-muted">
-            Assign what this domain's Telegram bot does. Saves go to this install only — not
-            Discord, and not other customers.
+            Assign what this Telegram bot does for this domain. Saves go to this install only
+            — not Discord, and not other customers.
           </p>
           <div>
             <Label>Bot display name</Label>
