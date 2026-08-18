@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { emit, fail, resolveDomainUser } from "./provisioning-common.mjs";
+import { assertCountCap } from "./domain-limits-cap.mjs";
 
 const exec = promisify(execFile);
 
@@ -43,6 +44,16 @@ function pgIdent(id) {
   return `"${String(id).replace(/"/g, "")}"`;
 }
 
+/** List/create/password all use unixUser_name (MySQL used to create unprefixed DBs that then vanished from the UI). */
+function mysqlCanonicalName(user, name) {
+  const cleaned = String(name || "").replace(/[^a-zA-Z0-9_]/g, "");
+  if (!cleaned) fail("Database name required.");
+  const userNorm = String(user).replace(/-/g, "_");
+  const prefix = `${userNorm}_`;
+  if (cleaned === userNorm || cleaned.startsWith(prefix)) return cleaned.slice(0, 64);
+  return `${prefix}${cleaned}`.slice(0, 64);
+}
+
 export async function dbList(domain) {
   const { user } = await resolveDomainUser(domain);
   const prefix = `${user}_`;
@@ -66,6 +77,17 @@ export async function dbList(domain) {
 
 export async function dbCreate(domain, name, pass, typeArg) {
   const { user } = await resolveDomainUser(domain);
+  const prefix = `${user}_`;
+  let count = 0;
+  try {
+    const out = await mysqlExec("SHOW DATABASES");
+    count += out
+      .split("\n")
+      .filter((n) => n.startsWith(prefix) || n === user.replace(/-/g, "_")).length;
+  } catch {
+    /* */
+  }
+  await assertCountCap(domain, "databases", count);
   const dbType = String(typeArg || "mysql").toLowerCase();
   if (dbType === "postgres" || dbType === "postgresql") {
     const dbName = `${user}_${name}`.slice(0, 63).replace(/-/g, "_");
@@ -79,15 +101,16 @@ export async function dbCreate(domain, name, pass, typeArg) {
     emit({ ok: true, name: dbName, user: dbUser, type: "postgres" });
     return;
   }
-  const dbName = sqlQuote(name);
-  const dbUser = sqlQuote(`${user}_${name}`.slice(0, 32));
+  const canonical = mysqlCanonicalName(user, name);
+  const dbName = sqlQuote(canonical);
+  const dbUser = sqlQuote(canonical.slice(0, 32));
   await mysqlExec(`CREATE DATABASE IF NOT EXISTS ${dbName}`);
   await mysqlExec(
     `CREATE USER IF NOT EXISTS ${dbUser}@'localhost' IDENTIFIED BY '${pass.replace(/'/g, "''")}'`,
   );
   await mysqlExec(`GRANT ALL PRIVILEGES ON ${dbName}.* TO ${dbUser}@'localhost'`);
   await mysqlExec("FLUSH PRIVILEGES");
-  emit({ ok: true, name, user: dbUser.replace(/`/g, ""), type: "mysql" });
+  emit({ ok: true, name: canonical, user: canonical.slice(0, 32), type: "mysql" });
 }
 
 export async function dbPass(domain, name, pass, typeArg) {
@@ -102,7 +125,7 @@ export async function dbPass(domain, name, pass, typeArg) {
     return;
   }
   const { user } = await resolveDomainUser(domain);
-  const dbUser = sqlQuote(`${user}_${name}`.slice(0, 32));
+  const dbUser = sqlQuote(mysqlCanonicalName(user, name).slice(0, 32));
   await mysqlExec(
     `ALTER USER ${dbUser}@'localhost' IDENTIFIED BY '${pass.replace(/'/g, "''")}'`,
   );

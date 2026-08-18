@@ -48,6 +48,22 @@ describe("demo terminal blocking", () => {
     ).toBe(false);
   });
 
+  it("blocks demo POST uploads that skip middleware", () => {
+    expect(
+      demoMutationBlocked("/api/domains/example.com/files/upload", "POST", "demo"),
+    ).toBe(true);
+    expect(
+      demoMutationBlocked(
+        "/api/domains/example.com/backups/upload",
+        "POST",
+        "demo",
+      ),
+    ).toBe(true);
+    expect(
+      demoMutationBlocked("/api/domains/example.com/files/upload", "POST", "admin"),
+    ).toBe(false);
+  });
+
   it("allows terminal when explicitly enabled on demo host", () => {
     process.env.QADBAK_DEMO_TERMINAL_DISABLED = "false";
     expect(demoTerminalBlocked()).toBe(false);

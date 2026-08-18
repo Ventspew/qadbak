@@ -26,18 +26,19 @@ export default function PublicDiscordPage() {
         </h1>
         <p className="mt-1 text-sm text-panel-muted">{APP_TAGLINE}</p>
         <p className="mt-4 text-sm text-panel-muted">
-          The panel operator bot is not publicly inviteable. Only the host admin
-          can invite it or link Discord, under{" "}
-          <Link href="/admin/discord" className="text-panel-link hover:underline">
-            Server → Discord
-          </Link>
-          .
+          The panel operator bot is not publicly inviteable. Host admins invite it
+          after signing in, under Server → Discord.
         </p>
         <p className="mt-3 text-sm text-panel-muted">
           Each website that installed the Discord Bot app has its own bot at{" "}
           <code className="text-slate-300">bot.thatdomain</code>. That page may
           only invite <strong>that customer&apos;s</strong> Discord application —
           never the official Qadbak bot.
+        </p>
+        <p className="mt-4 text-center text-sm">
+          <Link href="/login" className="text-panel-link hover:underline">
+            Panel login
+          </Link>
         </p>
         <div className="mt-6">
           <PanelFooter showBlurb />

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getSession, requireSession } from "./session";
 import type { HostedDomain } from "./types";
 import { getProvisioner } from "./provisioner";
@@ -35,4 +35,36 @@ export async function requireDomainApi(encodedDomain: string) {
 
 export async function getSessionIfPresent() {
   return getSession();
+}
+
+export function assertNotAliasDomain(domainInfo: HostedDomain, service: string) {
+  const type = String(domainInfo.type ?? "top").toLowerCase();
+  if (type === "alias") {
+    throw Object.assign(
+      new Error(`Alias domains have no ${service}. Use the parent domain.`),
+      { status: 400 },
+    );
+  }
+}
+
+export async function requireDomainApiNotAlias(
+  encodedDomain: string,
+  service: string,
+) {
+  const ctx = await requireDomainApi(encodedDomain);
+  assertNotAliasDomain(ctx.domainInfo, service);
+  return ctx;
+}
+
+export function redirectIfAlias(domainInfo: HostedDomain, domain: string) {
+  if (String(domainInfo.type ?? "top").toLowerCase() === "alias") {
+    redirect(`/domains/${encodeURIComponent(domain)}`);
+  }
+}
+
+/** Pages that have no alias equivalent (mail, DNS, SSL, backups, aliases). */
+export async function requireDomainPageNotAlias(encodedDomain: string) {
+  const ctx = await requireDomainAccess(encodedDomain);
+  redirectIfAlias(ctx.domainInfo, ctx.domain);
+  return ctx;
 }

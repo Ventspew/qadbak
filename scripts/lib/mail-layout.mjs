@@ -141,17 +141,6 @@ export async function listMailboxesFromLayout(layout) {
     }
   }
 
-  if (layout.aliasMap) {
-    const rows = await readMapFile(layout.aliasMap);
-    for (const { address, destination } of rows) {
-      const addr = address.toLowerCase();
-      if (!addr.endsWith(`@${domain}`)) continue;
-      const local = addr.split("@")[0];
-      const dest = destination.split("@")[0].split(",")[0].trim();
-      if (local && dest) add(local === dest ? local : dest, local);
-    }
-  }
-
   return mailboxes;
 }
 

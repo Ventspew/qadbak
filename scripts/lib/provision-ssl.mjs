@@ -7,8 +7,11 @@ import {
   fail,
   fileExists,
   resolveDomainUser,
+  assertNotAliasDomain,
   QADBAK_DIR,
 } from "./provisioning-common.mjs";
+
+import { certMatchesDomain } from "./ssl-cert-match.mjs";
 
 const exec = promisify(execFile);
 
@@ -49,7 +52,7 @@ async function certbotList(domain) {
   const hosts = new Set([domain, `www.${domain}`]);
   try {
     for (const name of await readdir(live)) {
-      if (name.includes(domain) || domain.includes(name.replace(/^www\./, ""))) {
+      if (certMatchesDomain(name, domain)) {
         hosts.add(name);
       }
     }
@@ -73,7 +76,10 @@ async function certbotList(domain) {
   if (certs.length) return certs;
   try {
     const { stdout } = await exec("certbot", ["certificates"], { maxBuffer: 2 * 1024 * 1024 });
-    if (stdout.includes(domain)) {
+    const names = [...stdout.matchAll(/^\s*Certificate Name:\s+(\S+)/gim)].map(
+      (m) => m[1],
+    );
+    if (names.some((n) => certMatchesDomain(n, domain))) {
       certs.push({
         host: domain,
         issuer: "Let's Encrypt",
@@ -88,9 +94,29 @@ async function certbotList(domain) {
 }
 
 export async function sslList(domain) {
+  await assertNotAliasDomain(domain, "SSL");
   await resolveDomainUser(domain);
   const certs = await certbotList(domain);
   emit({ ok: true, certs });
+}
+
+function extraSslHost(domain, host) {
+  const h = String(host || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, "");
+  const d = String(domain || "")
+    .trim()
+    .toLowerCase();
+  if (!h || h === d || h === `www.${d}`) return "";
+  if (
+    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(
+      h,
+    )
+  ) {
+    return "";
+  }
+  return h;
 }
 
 // SSL issue drives apply-domain-nginx.sh ISSUE_SSL=1 instead of pure certbot,
@@ -98,8 +124,10 @@ export async function sslList(domain) {
 // root rewritten alongside the cert — bare `certbot certonly` only fetches
 // pem files and leaves the domain reachable on HTTP only.
 export async function sslIssue(domain, host) {
+  await assertNotAliasDomain(domain, "SSL");
   const { user, home } = await resolveDomainUser(domain);
   const target = host && host !== domain ? host : domain;
+  const extra = extraSslHost(domain, host);
 
   // The provisioning helper itself is invoked via sudo (see
   // scripts/run-provisioning-helper.sh), so this Node process is already
@@ -108,7 +136,11 @@ export async function sslIssue(domain, host) {
   if (await fileExists(applyScript)) {
     try {
       await exec("bash", [applyScript, domain, user], {
-        env: { ...process.env, ISSUE_SSL: "1" },
+        env: {
+          ...process.env,
+          ISSUE_SSL: "1",
+          ...(extra ? { EXTRA_SSL_HOST: extra } : {}),
+        },
         timeout: 360_000,
         maxBuffer: 4 * 1024 * 1024,
       });
@@ -146,6 +178,7 @@ export async function sslIssue(domain, host) {
     domain,
     "-d",
     `www.${domain}`,
+    ...(extra ? ["-d", extra] : []),
   ];
   try {
     await exec("certbot", [...args, "--nginx"], { timeout: 300_000, maxBuffer: 4 * 1024 * 1024 });
@@ -157,4 +190,13 @@ export async function sslIssue(domain, host) {
     );
   }
   emit({ ok: true, domain, host: target, user });
+}
+
+export async function sslIssueBestEffort(domain, host) {
+  try {
+    await sslIssue(domain, host);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    emit(`WARN: SSL not issued for ${host || domain}: ${msg.slice(0, 400)}`);
+  }
 }

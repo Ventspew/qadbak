@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
-import { findZonePath, dnsAdd } from "./provision-dns.mjs";
+import { dnsAdd, dnsZoneContext, findZonePath } from "./provision-dns.mjs";
+import { parseZone } from "./dns-zone-edit.mjs";
 
 const exec = promisify(execFile);
 
@@ -215,22 +216,6 @@ export async function mailDnsHints(domain) {
   };
 }
 
-function zoneHasMx(text) {
-  return /\bIN\s+MX\b/i.test(text);
-}
-
-function zoneHasMailA(text, label) {
-  if (!isValidHostname(label)) return false;
-  const needle = `${label.toLowerCase()} `;
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim().toLowerCase();
-    if (trimmed.startsWith(needle) || trimmed.startsWith(`${label.toLowerCase()}\t`)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /** Add MX + mail A to local BIND zone when QADBAK_MAIL_AUTODNS is not false. */
 export async function ensureInboundMailDns(domain) {
   const hints = await mailDnsHints(domain);
@@ -240,13 +225,17 @@ export async function ensureInboundMailDns(domain) {
   }
 
   try {
-    const zonePath = await findZonePath(domain);
+    const ctx = await dnsZoneContext(domain);
+    const zonePath = await findZonePath(ctx.origin);
     const text = await readFile(zonePath, "utf8");
+    const recs = parseZone(text, ctx.origin);
     const mailHost = hints.mailHost;
     const mailLabel = mailHost.includes(".") ? mailHost.split(".")[0] : "mail";
+    const mxName = ctx.label || "@";
+    const mailAName = ctx.label ? `${mailLabel}.${ctx.label}` : mailLabel;
     const applied = [];
 
-    if (!zoneHasMx(text)) {
+    if (!recs.some((r) => String(r.type).toUpperCase() === "MX" && r.name === mxName)) {
       await dnsAdd(domain, {
         name: "@",
         type: "MX",
@@ -257,7 +246,10 @@ export async function ensureInboundMailDns(domain) {
     }
 
     const ip = await resolveOriginIp();
-    if (ip && !zoneHasMailA(text, mailLabel)) {
+    if (
+      ip &&
+      !recs.some((r) => String(r.type).toUpperCase() === "A" && r.name === mailAName)
+    ) {
       await dnsAdd(domain, { name: mailLabel, type: "A", value: ip });
       applied.push(`${mailLabel} A`);
     }

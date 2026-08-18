@@ -15,6 +15,7 @@ export type NativeDomainRecord = {
   plan?: string;
   disk_limit?: string;
   parent?: string;
+  type?: "top" | "sub" | "alias" | string;
   reseller?: string;
   /** Shown only to the demo panel user — hidden from production admin. */
   demoOnly?: boolean;
@@ -40,6 +41,7 @@ export async function loadNativeDomainRegistry(): Promise<NativeDomainRecord[]> 
         plan: String(r.plan ?? "Default"),
         disk_limit: r.disk_limit ? String(r.disk_limit) : undefined,
         parent: r.parent ? String(r.parent) : undefined,
+        type: r.type ? String(r.type) : undefined,
         reseller: r.reseller ? String(r.reseller) : undefined,
         demoOnly: Boolean(r.demoOnly),
       });
@@ -129,6 +131,7 @@ async function enrichDomainDisk(row: NativeDomainRecord): Promise<HostedDomain> 
     disk_used: used,
     disk_limit: limit,
     ...(row.parent ? { parent: row.parent } : {}),
+    ...(row.type ? { type: row.type } : {}),
     ...(row.reseller ? { reseller: row.reseller } : {}),
   };
 }

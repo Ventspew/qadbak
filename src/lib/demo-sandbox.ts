@@ -52,6 +52,7 @@ export function demoGlobalToolMock(
             dnsPending: false,
             localWebsiteOk: true,
             mailOk: true,
+            type: "top",
             containersStopped: [],
             actions: [],
           },

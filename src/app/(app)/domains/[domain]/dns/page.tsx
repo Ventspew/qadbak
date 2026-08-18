@@ -1,11 +1,11 @@
 import { DnsManager } from "@/components/DnsManager";
-import { requireDomainAccess } from "@/lib/domain-api";
+import { requireDomainPageNotAlias } from "@/lib/domain-api";
 import { getProvisioner } from "@/lib/provisioner";
 
 type Props = { params: Promise<{ domain: string }> };
 
 export default async function DnsPage({ params }: Props) {
-  const { session, domain } = await requireDomainAccess((await params).domain);
+  const { session, domain } = await requireDomainPageNotAlias((await params).domain);
   let records: Awaited<ReturnType<ReturnType<typeof getProvisioner>["getDns"]>>["records"] = [];
   let error = "";
   try {

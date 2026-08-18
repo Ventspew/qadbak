@@ -4,7 +4,7 @@
  * Usage: update-status-helper.mjs <command> [args...]
  */
 import { spawn } from "node:child_process";
-import { access, mkdir, readFile, writeFile, copyFile, chmod } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile, copyFile, chmod, readdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -117,7 +117,11 @@ function parseJsonOutput(raw) {
     const start = trimmed.indexOf("{");
     const end = trimmed.lastIndexOf("}");
     if (start >= 0 && end > start) {
-      return JSON.parse(trimmed.slice(start, end + 1));
+      try {
+        return JSON.parse(trimmed.slice(start, end + 1));
+      } catch {
+        /* fall through */
+      }
     }
     throw new Error(trimmed.slice(0, 200) || "Invalid JSON from helper script.");
   }
@@ -250,7 +254,24 @@ ${shellBody}
 EC=$?
 echo "==> Finished exit $EC"
 export EC
-if command -v node >/dev/null 2>&1; then
+write_meta() {
+  python3 - <<'PY'
+import json, os, datetime
+p = os.environ["META"]
+ec = int(os.environ.get("EC", "1"))
+with open(p, encoding="utf-8") as f:
+    m = json.load(f)
+m["status"] = "done" if ec == 0 else "failed"
+m["finishedAt"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+m["exitCode"] = ec
+with open(p, "w", encoding="utf-8") as f:
+    json.dump(m, f, indent=2)
+    f.write("\\n")
+PY
+}
+if command -v python3 >/dev/null 2>&1; then
+  write_meta
+elif command -v node >/dev/null 2>&1; then
   node <<'NODE'
 const fs = require("fs");
 const m = JSON.parse(fs.readFileSync(process.env.META, "utf8"));
@@ -271,8 +292,64 @@ exit $EC
     stdio: "ignore",
     cwd: QADBAK_DIR,
   });
+  const pid = child.pid;
   child.unref();
-  return { jobId, type, status: "running" };
+  await writeJobMeta(jobId, {
+    id: jobId,
+    type,
+    status: "running",
+    startedAt: new Date().toISOString(),
+    pid,
+  });
+  return { jobId, type, status: "running", pid };
+}
+
+function processAlive(pid) {
+  const n = Number(pid);
+  if (!Number.isInteger(n) || n <= 0) return false;
+  try {
+    process.kill(n, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function runningUpdateJobs() {
+  await ensureDirs();
+  let names = [];
+  try {
+    names = await readdir(JOBS_DIR);
+  } catch {
+    return [];
+  }
+  const running = [];
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    const meta = await readJson(path.join(JOBS_DIR, name), null);
+    if (!(meta?.status === "running" && meta.id)) continue;
+    if (meta.pid && !processAlive(meta.pid)) {
+      await writeJobMeta(meta.id, {
+        ...meta,
+        status: "failed",
+        finishedAt: new Date().toISOString(),
+        exitCode: -1,
+        error: "process no longer running",
+      });
+      continue;
+    }
+    running.push(meta);
+  }
+  return running;
+}
+
+async function assertNoRunningUpdateJob() {
+  const running = await runningUpdateJobs();
+  if (running.length) {
+    fail(
+      `An update job is already running (${running[0].id}). Wait until it finishes.`,
+    );
+  }
 }
 
 async function cmdUbuntuReleaseStatus() {
@@ -356,6 +433,7 @@ async function cmdUbuntuReleaseStart(target) {
     );
   }
   const jobId = `ubuntu-release-${Date.now()}`;
+  await assertNoRunningUpdateJob();
   await startNohupJob(
     jobId,
     "ubuntu-release-upgrade",
@@ -373,6 +451,7 @@ async function cmdLinuxUpgradeStart() {
     fail("apt-get not available on this host.");
   }
   const jobId = `linux-${Date.now()}`;
+  await assertNoRunningUpdateJob();
   await startNohupJob(
     jobId,
     "linux-upgrade",
@@ -562,6 +641,7 @@ async function cmdQadbakUpgradeStart() {
   if (!(await exists(script))) {
     fail(`Missing ${script}`);
   }
+  await assertNoRunningUpdateJob();
   const { backupDir, copied } = await backupPanelData();
   const jobId = `qadbak-${Date.now()}`;
   await startNohupJob(

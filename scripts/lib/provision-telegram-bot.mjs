@@ -4,7 +4,7 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import path from "node:path";
 import { dnsAdd } from "./provision-dns.mjs";
-import { sslIssue } from "./provision-ssl.mjs";
+import { sslIssueBestEffort } from "./provision-ssl.mjs";
 import {
   emit,
   fail,
@@ -243,9 +243,9 @@ function commandsFromRecipes(recipes) {
 }
 
 async function setBotCommands(token, recipes) {
-  if (!token) return;
+  if (!token) return false;
   try {
-    await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
+    const res = await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -253,8 +253,17 @@ async function setBotCommands(token, recipes) {
       },
       body: JSON.stringify({ commands: commandsFromRecipes(recipes) }),
     });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body?.ok === false) {
+      console.warn(
+        `setMyCommands failed: HTTP ${res.status} ${body?.description || ""}`.trim(),
+      );
+      return false;
+    }
+    return true;
   } catch (e) {
-    emit(`WARN: setMyCommands: ${e instanceof Error ? e.message : String(e)}`);
+    console.warn(`setMyCommands: ${e instanceof Error ? e.message : String(e)}`);
+    return false;
   }
 }
 
@@ -506,7 +515,7 @@ export async function telegramBotInstall(domain, payloadJson) {
   await mkdir(path.join(appsDir, "www"), { recursive: true });
   await upsertProxy(botHost, "/", `http://127.0.0.1:${httpPort}`);
   await reloadNginx(botHost, user);
-  await sslIssue(botHost, botHost).catch(() => {});
+  await sslIssueBestEffort(botHost, botHost);
 
   const cfg = {
     parentDomain: parent,
@@ -624,7 +633,7 @@ export async function telegramBotSaveTasks(domain, payloadJson) {
   if (recipes.botName && recipes.botName !== cfg.botName) {
     await writeDomainConfigJson(parent, "telegram-bot.json", { ...cfg, botName: recipes.botName });
   }
-  await setBotCommands(cfg.telegramBotToken, recipes);
+  const commandsSynced = await setBotCommands(cfg.telegramBotToken, recipes);
   emit({
     ok: true,
     installed: true,
@@ -638,5 +647,6 @@ export async function telegramBotSaveTasks(domain, payloadJson) {
     inviteUrl: inviteUrl(cfg.telegramBotUsername),
     recipes,
     commands: commandsFromRecipes(recipes),
+    commandsSynced,
   });
 }

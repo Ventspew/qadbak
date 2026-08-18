@@ -21,6 +21,7 @@ type DomainOverview = {
   dnsPending?: boolean;
   localWebsiteOk?: boolean;
   mailOk: boolean;
+  type?: string;
   actions: ActionItem[];
 };
 
@@ -183,22 +184,30 @@ export function DashboardDomainOverview() {
                     </div>
                     <div>
                       <dt>Mail</dt>
-                      <dd className="text-emerald-400">{d.mailOk ? "OK" : " - "}</dd>
+                      <dd className={d.mailOk ? "text-emerald-400" : "text-panel-muted"}>
+                        {d.mailOk ? "Configured" : "—"}
+                      </dd>
                     </div>
                   </dl>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                    <Link href={`/domains/${enc}/dns`} className="text-panel-link hover:underline">
-                      DNS
-                    </Link>
-                    <Link href={`/domains/${enc}/mail`} className="text-panel-link hover:underline">
-                      Mail
-                    </Link>
+                    {d.type !== "alias" && (
+                      <>
+                        <Link href={`/domains/${enc}/dns`} className="text-panel-link hover:underline">
+                          DNS
+                        </Link>
+                        <Link href={`/domains/${enc}/mail`} className="text-panel-link hover:underline">
+                          Mail
+                        </Link>
+                      </>
+                    )}
                     <Link href={`/domains/${enc}/tools`} className="text-panel-link hover:underline">
                       Site tools
                     </Link>
-                    <Link href={`/domains/${enc}/backups`} className="text-panel-link hover:underline">
-                      Backup
-                    </Link>
+                    {d.type !== "alias" && (
+                      <Link href={`/domains/${enc}/backups`} className="text-panel-link hover:underline">
+                        Backup
+                      </Link>
+                    )}
                   </div>
                 </div>
               );

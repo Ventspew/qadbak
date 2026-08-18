@@ -66,12 +66,20 @@ export async function PATCH(request: Request) {
     const next = mergeDiscordNotifyPatch(current, await request.json());
     await saveDiscordNotifyConfig(next);
     await auditLog(session.username, "discord-notify-save");
+    let warning = "";
     try {
       await runProvisioningHelper("host-discord-bot-ensure");
-    } catch {
-      /* docker may be unavailable in some installs */
+    } catch (e) {
+      warning =
+        e instanceof Error
+          ? e.message
+          : "Saved credentials, but the host Discord bot container did not start.";
     }
-    return jsonOk({ ok: true, ...(await publicPayload(request)) });
+    return jsonOk({
+      ok: true,
+      ...(await publicPayload(request)),
+      ...(warning ? { warning } : {}),
+    });
   } catch (err) {
     return handleApiError(err);
   }

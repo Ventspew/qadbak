@@ -5,6 +5,8 @@ import { validatePanelPassword } from "./password-policy";
 import { loadUsers, saveUsers } from "./users";
 import { requirePremiumFeature } from "./premium/guard";
 
+const BCRYPT_ROUNDS = 12;
+
 /**
  * Multi-tenant client account helpers.
  *
@@ -44,7 +46,7 @@ export async function createClientUser(opts: {
   }
   const pwErr = validatePanelPassword(opts.password);
   if (pwErr) throw new Error(pwErr);
-  const hash = await bcrypt.hash(opts.password, 12);
+  const hash = await bcrypt.hash(opts.password, BCRYPT_ROUNDS);
   const user: PanelUser = {
     id: `client-${Date.now()}`,
     username: name,
@@ -71,7 +73,7 @@ export async function setClientPassword(
   if (target.role !== "client") {
     throw new Error(`User is not a client account: ${username}`);
   }
-  target.passwordHash = await bcrypt.hash(password, 10);
+  target.passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   await saveUsers(users);
   return target;
 }

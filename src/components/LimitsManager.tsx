@@ -40,7 +40,9 @@ export function LimitsManager({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed.");
-      setSuccess("Limits updated.");
+      setSuccess(
+        "Limits saved. Mailbox and database caps apply on create; disk and bandwidth are display-only.",
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error.");
     } finally {
@@ -50,7 +52,11 @@ export function LimitsManager({
 
   return (
     <div className="space-y-6">
-      <DomainPageHeader domain={domain} title="Limits" />
+      <DomainPageHeader
+        domain={domain}
+        title="Limits"
+        description="Mailbox and database counts are enforced on create. Disk and bandwidth are display-only (no OS quota)."
+      />
       {error && <Alert>{error}</Alert>}
       {success && <Alert variant="success">{success}</Alert>}
       <Card>

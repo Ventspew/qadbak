@@ -234,8 +234,8 @@ export const DOMAIN_FEATURES: DomainFeature[] = [
   {
     id: "security",
     phase: 3,
-    label: "Spam & DKIM",
-    description: "Spam filter and DKIM for email",
+    label: "Security",
+    description: "Spam, DKIM, WAF, and malware tools for this domain",
     path: "security",
     programs: {
       admin: ["set-spam", "set-dkim", "modify-web"],
@@ -246,7 +246,7 @@ export const DOMAIN_FEATURES: DomainFeature[] = [
     id: "features",
     phase: 4,
     label: "Features",
-    description: "Toggle web, mail, DNS, and database",
+    description: "Panel labels — does not stop mail, DNS, or nginx",
     path: "features",
     adminOnly: true,
     programs: {
@@ -258,7 +258,7 @@ export const DOMAIN_FEATURES: DomainFeature[] = [
     id: "limits",
     phase: 4,
     label: "Limits",
-    description: "Disk, mailboxes, and bandwidth",
+    description: "Mailbox/DB caps on create; disk is display-only",
     path: "limits",
     adminOnly: true,
     programs: {
@@ -446,6 +446,7 @@ export const ADMIN_NAV = [
   { path: "/admin/terminal", label: "Terminal" },
   { path: "/admin/updates", label: "Updates", premium: "admin-updates" as const },
   { path: "/admin/status", label: "Status" },
+  { path: "/admin/docker", label: "Docker" },
   { path: "/admin/discord", label: "Discord" },
   { path: "/admin/system", label: "System" },
   { path: "/admin/networking", label: "Networking" },
@@ -508,11 +509,45 @@ export function programsForRole(role: Role): readonly string[] {
   return [...new Set([...GLOBAL_PROGRAMS[role], ...fromFeatures])];
 }
 
-export function featuresForDomain(role: Role, isAdmin: boolean): DomainFeature[] {
+const ALIAS_HIDDEN_FEATURE_IDS = new Set([
+  "mail",
+  "dns",
+  "ssl",
+  "backups",
+  "aliases",
+]);
+
+/** Bookmark/legacy segments that still map to mail/DNS/SSL/backup. */
+const ALIAS_HIDDEN_PATH_SEGMENTS = new Set([
+  ...ALIAS_HIDDEN_FEATURE_IDS,
+  "newsletter",
+  "mailboxes",
+  "email",
+  "mail-logs",
+  "mail-settings",
+  "mail-dns",
+]);
+
+/** True for /domains/:name/(mail|dns|ssl|backups|…) including legacy mail URLs. */
+export function isAliasBlockedFeaturePath(pathname: string): boolean {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts[0] !== "domains" || parts.length < 3) return false;
+  const seg = decodeURIComponent(parts[2] ?? "").toLowerCase();
+  return ALIAS_HIDDEN_PATH_SEGMENTS.has(seg);
+}
+
+export function featuresForDomain(
+  role: Role,
+  isAdmin: boolean,
+  opts?: { type?: string },
+): DomainFeature[] {
+  const type = String(opts?.type || "top").toLowerCase();
+  const aliasHidden = ALIAS_HIDDEN_FEATURE_IDS;
   return DOMAIN_FEATURES.filter((f) => {
     if (f.hideFromNav) return false;
     if (f.phase > IMPLEMENTED_PHASE) return false;
     if (f.adminOnly && !isAdmin) return false;
+    if (type === "alias" && aliasHidden.has(f.id)) return false;
     const progs = isAdmin ? f.programs.admin : f.programs.client;
     return progs.length > 0;
   }).sort(

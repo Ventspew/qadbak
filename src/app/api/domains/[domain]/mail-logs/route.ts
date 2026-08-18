@@ -1,13 +1,13 @@
 import { auditLog } from "@/lib/audit";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { requireDomainApi } from "@/lib/domain-api";
+import { requireDomainApiNotAlias } from "@/lib/domain-api";
 import { getProvisioner } from "@/lib/provisioner";
 
 type Params = { params: Promise<{ domain: string }> };
 
 export async function GET(request: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "mail");
     const query = new URL(request.url).searchParams.get("q") ?? "";
     const lines = await getProvisioner().searchMailLogs(domain, query, session);
     return jsonOk({ lines });
@@ -18,7 +18,7 @@ export async function GET(request: Request, { params }: Params) {
 
 export async function POST(request: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "mail");
     if (session.role !== "admin") {
       return jsonError("Administrators only.", 403);
     }

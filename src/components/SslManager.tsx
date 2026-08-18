@@ -40,7 +40,7 @@ export function SslManager({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Request failed.");
-      setSuccess("Issuing HTTPS certificate and configuring nginx. This may take a few minutes.");
+      setSuccess("HTTPS certificate issued and nginx updated.");
       const listRes = await fetch(`/api/domains/${enc}/ssl`);
       const listData = await listRes.json();
       if (listRes.ok) setCerts(listData.certs ?? []);

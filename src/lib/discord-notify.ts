@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { SignJWT, jwtVerify } from "jose";
 import { JWT_ISSUER } from "./session-cookies";
+import { writeJsonAtomic } from "./write-json-atomic";
 
 const CONFIG_PATH = path.join(process.cwd(), "data", "discord-notify.json");
 const SUBS_PATH = path.join(process.cwd(), "data", "discord-subscribers.json");
@@ -164,7 +165,7 @@ export async function saveDiscordNotifyConfig(
 ): Promise<void> {
   const normalized = normalizeDiscordNotifyConfig(settings);
   await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
-  await fs.writeFile(CONFIG_PATH, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+  await writeJsonAtomic(CONFIG_PATH, normalized, 0o600);
 }
 
 export function normalizeSubscribersFile(input: unknown): DiscordSubscribersFile {
@@ -202,7 +203,7 @@ export async function savePanelSubscribers(
 ): Promise<void> {
   const normalized = normalizeSubscribersFile(data);
   await fs.mkdir(path.dirname(SUBS_PATH), { recursive: true });
-  await fs.writeFile(SUBS_PATH, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+  await writeJsonAtomic(SUBS_PATH, normalized, 0o600);
 }
 
 export async function upsertPanelSubscriber(user: {

@@ -2,6 +2,8 @@ import { createHash, randomBytes } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 
+import { writeJsonAtomic } from "./write-json-atomic";
+
 const KEYS_PATH = path.join(process.cwd(), "data", "api-keys.json");
 
 export type ApiKeyScope =
@@ -48,8 +50,7 @@ async function loadStore(): Promise<Store> {
 }
 
 async function saveStore(store: Store): Promise<void> {
-  await fs.mkdir(path.dirname(KEYS_PATH), { recursive: true });
-  await fs.writeFile(KEYS_PATH, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+  await writeJsonAtomic(KEYS_PATH, store, 0o600);
 }
 
 export async function listApiKeys(): Promise<Omit<ApiKeyRecord, "hash">[]> {

@@ -54,7 +54,7 @@ export function FeaturesManager({
       <DomainPageHeader
         domain={domain}
         title="Features"
-        description="Which components are active on this domain"
+        description="Panel labels for this domain. Turning a feature off here does not stop mail, DNS, or nginx — use Disable on the domain or the matching manager page."
       />
       {error && <Alert>{error}</Alert>}
       <Card className="divide-y divide-panel-border p-0">

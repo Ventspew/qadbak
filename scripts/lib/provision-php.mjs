@@ -19,9 +19,9 @@ async function syncPhpFpmAndNginx(domain) {
   const cfg = await loadPhpConfig(domain);
   const ver = cfg.defaultVersion || "8.2";
   const poolScript = path.join(QADBAK_DIR, "scripts", "apply-php-fpm-pool.sh");
-  await exec("bash", [poolScript, user, ver, home], { timeout: 120_000 }).catch(() => {});
+  await exec("bash", [poolScript, user, ver, home], { timeout: 120_000 });
   const nginxScript = path.join(QADBAK_DIR, "scripts", "apply-domain-nginx.sh");
-  await exec("bash", [nginxScript, domain, user], { timeout: 120_000 }).catch(() => {});
+  await exec("bash", [nginxScript, domain, user], { timeout: 120_000 });
 }
 
 const ALLOWED_INI_KEYS = new Set([
@@ -147,18 +147,20 @@ export async function phpSetDirectory(domain, dir, version) {
   await resolveDomainUser(domain);
   const rel = String(dir || "public_html").replace(/^\/+/, "");
   const cfg = await loadPhpConfig(domain);
+  const sitePool = rel === "public_html" || rel === "." || rel === "";
+  const mode = sitePool ? "fpm" : "label";
   const directories = [...cfg.directories];
   const idx = directories.findIndex((d) => d.dir === rel);
-  if (idx >= 0) directories[idx] = { ...directories[idx], version, mode: "fpm" };
-  else directories.push({ dir: rel, version, mode: "fpm" });
+  if (idx >= 0) directories[idx] = { ...directories[idx], version, mode };
+  else directories.push({ dir: rel, version, mode });
   await writeDomainConfigJson(domain, "php.json", {
     ...cfg,
-    defaultVersion: version,
+    defaultVersion: sitePool ? version : cfg.defaultVersion,
     directory: rel,
     directories,
   });
   await syncPhpFpmAndNginx(domain);
-  emit({ ok: true, dir: rel, version, mode: "fpm" });
+  emit({ ok: true, dir: rel, version, mode });
 }
 
 export async function phpModifyIni(domain, name, value, version) {
@@ -176,7 +178,7 @@ export async function phpModifyIni(domain, name, value, version) {
   await writeUserIniMap(file, map);
   await exec("chown", [`${user}:${user}`, file]);
   const cfg = await loadPhpConfig(domain);
-  await syncPhpFpmAndNginx(domain).catch(() => {});
+  await syncPhpFpmAndNginx(domain);
   emit({
     ok: true,
     name: key,

@@ -2,23 +2,9 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CATEGORY_LABELS } from "@/lib/apps/catalog-labels";
+import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/apps/catalog-labels";
 import type { AppCatalogEntry, AppCategory } from "@/lib/apps/catalog-types";
 import type { AppTemplateSummary } from "@/lib/apps/types";
-
-const CATEGORY_ORDER: AppCategory[] = [
-  "cms",
-  "ecommerce",
-  "collaboration",
-  "education",
-  "forum",
-  "analytics",
-  "surveys",
-  "media",
-  "finance",
-  "support",
-  "tools",
-];
 
 export function AdminAppsCatalog({
   templates,

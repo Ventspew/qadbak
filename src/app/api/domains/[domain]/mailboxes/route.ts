@@ -1,6 +1,6 @@
 import { auditLog } from "@/lib/audit";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { requireDomainApi } from "@/lib/domain-api";
+import { requireDomainApiNotAlias } from "@/lib/domain-api";
 import { isPremiumFeatureEnabled } from "@/lib/premium/server";
 import { getProvisioner } from "@/lib/provisioner";
 import { nativeImapEnabled } from "@/lib/provisioner/native-features";
@@ -12,7 +12,7 @@ type ImapUser = { user: string; email?: string; label?: string };
 
 export async function GET(request: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "mail");
     const user = new URL(request.url).searchParams.get("user") ?? "";
 
     if (user.trim() && !(await isPremiumFeatureEnabled("webmail-ui"))) {
@@ -44,7 +44,7 @@ export async function GET(request: Request, { params }: Params) {
 
 export async function POST(request: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "mail");
     if (session.role !== "admin") {
       return jsonError("Only administrators may copy mailboxes.", 403);
     }

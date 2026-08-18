@@ -7,9 +7,33 @@ import type {
   CreateDomainInput,
 } from "../hosting-remote";
 import { assertActorDomainAccess } from "../rbac";
+import { loadNativeDomainRegistry } from "./native-domains";
 import { runProvisioningHelper, type HelperResult } from "./native-exec";
 
 type Actor = { role: Role; domains: string[] };
+
+function aliasBlockedService(cmd: string): string | null {
+  if (cmd.startsWith("ssl-")) return "SSL";
+  if (cmd.startsWith("dns-")) return "DNS";
+  if (cmd.startsWith("mail-") || cmd.startsWith("imap-") || cmd.startsWith("newsletter-"))
+    return "mail";
+  if (cmd.startsWith("backup-")) return "backups";
+  if (cmd.startsWith("alias-")) return "aliases";
+  return null;
+}
+
+async function refuseAliasIfNeeded(domain: string, cmd: string): Promise<void> {
+  const service = aliasBlockedService(cmd);
+  if (!service) return;
+  const rows = await loadNativeDomainRegistry();
+  const hit = rows.find((r) => r.name.toLowerCase() === domain.toLowerCase());
+  if (String(hit?.type || "").toLowerCase() === "alias") {
+    throw Object.assign(
+      new Error(`Alias domains have no ${service}. Use the parent domain.`),
+      { status: 400 },
+    );
+  }
+}
 
 function requireAdminActor(actor: Actor): void {
   if (actor.role !== "admin") {
@@ -24,6 +48,7 @@ async function runDomainHelper(
   ...args: string[]
 ): Promise<HelperResult> {
   assertActorDomainAccess(actor, domain);
+  await refuseAliasIfNeeded(domain, cmd);
   return runProvisioningHelper(cmd, domain, ...args);
 }
 
@@ -235,6 +260,7 @@ export async function startBackupNative(
   domain: string,
   actor: Actor,
 ): Promise<{ file?: string; components?: string[] }> {
+  requireAdminActor(actor);
   const r = await runDomainHelper(actor, domain, "backup-create", "full");
   return {
     file: r.file as string | undefined,

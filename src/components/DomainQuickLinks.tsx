@@ -16,14 +16,16 @@ const HIGHLIGHT_IDS = new Set([
 export function DomainQuickLinks({
   domain,
   isAdmin,
+  type,
 }: {
   domain: string;
   isAdmin: boolean;
+  type?: string;
 }) {
   const enc = encodeURIComponent(domain);
   const base = `/domains/${enc}`;
   const role = isAdmin ? "admin" : "client";
-  const features = featuresForDomain(role, isAdmin);
+  const features = featuresForDomain(role, isAdmin, { type });
   const highlighted = features.filter((f) => HIGHLIGHT_IDS.has(f.id));
   const rest = features.filter((f) => !HIGHLIGHT_IDS.has(f.id));
 

@@ -23,7 +23,7 @@ export type TelegramBotPagePayload = {
 };
 
 export default async function TelegramBotPage({ params }: Props) {
-  const { domain } = await requireDomainAccess((await params).domain);
+  const { session, domain } = await requireDomainAccess((await params).domain);
   let payload: TelegramBotPagePayload = {
     installed: false,
     recipes: { botName: "Qadbak", tasks: defaultTelegramBotTasks() },
@@ -54,6 +54,7 @@ export default async function TelegramBotPage({ params }: Props) {
       domain={domain}
       initial={payload}
       initialError={error}
+      isAdmin={session.role === "admin"}
     />
   );
 }

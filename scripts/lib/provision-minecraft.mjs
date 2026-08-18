@@ -4,7 +4,7 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import path from "node:path";
 import { dnsAdd } from "./provision-dns.mjs";
-import { sslIssue } from "./provision-ssl.mjs";
+import { sslIssueBestEffort } from "./provision-ssl.mjs";
 import {
   emit,
   fail,
@@ -511,7 +511,7 @@ export async function minecraftInstall(domain, payloadJson) {
   });
   await upsertProxy(mcHost, "/", `http://127.0.0.1:${notifyPort}/`, false);
   await reloadNginx(mcHost, user);
-  await sslIssue(mcHost, mcHost).catch(() => {});
+  await sslIssueBestEffort(mcHost, mcHost);
 
   const cfg = {
     parentDomain: parent,

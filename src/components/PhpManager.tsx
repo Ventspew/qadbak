@@ -68,7 +68,11 @@ export function PhpManager({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed.");
-      setSuccess(`PHP ${version} linked to ${dir}.`);
+      setSuccess(
+        dir === "public_html" || dir === "."
+          ? `PHP ${version} is now the site pool version.`
+          : `Saved ${dir} → PHP ${version} (label only; site pool is unchanged).`,
+      );
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error.");
@@ -129,7 +133,11 @@ export function PhpManager({
 
   return (
     <div className="space-y-6">
-      <DomainPageHeader domain={domain} title="PHP" />
+      <DomainPageHeader
+        domain={domain}
+        title="PHP"
+        description="One PHP-FPM pool per unix user — the version applies to the whole site. Extra directory rows are labels until a separate pool exists."
+      />
       {error && <Alert>{error}</Alert>}
       {success && <Alert variant="success">{success}</Alert>}
 

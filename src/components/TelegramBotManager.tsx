@@ -20,6 +20,7 @@ type Payload = {
   inviteUrl?: string;
   recipes: TelegramBotRecipes;
   commands?: Array<{ command: string; description: string }>;
+  commandsSynced?: boolean;
 };
 
 const TASK_TYPES: Array<{ value: Task["type"]; label: string; hint: string }> = [
@@ -67,10 +68,12 @@ export function TelegramBotManager({
   domain,
   initial,
   initialError,
+  isAdmin = false,
 }: {
   domain: string;
   initial: Payload;
   initialError: string;
+  isAdmin?: boolean;
 }) {
   const enc = encodeURIComponent(domain);
   const [payload, setPayload] = useState(initial);
@@ -111,9 +114,15 @@ export function TelegramBotManager({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed");
       apply(data as Payload);
-      setSuccess(
-        "Tasks saved. Commands and replies update on the next message; the Telegram menu refreshes within a few seconds.",
-      );
+      if (data.commandsSynced === false) {
+        setSuccess(
+          "Tasks saved on this server. Telegram did not update the command menu — check the bot token or try again.",
+        );
+      } else {
+        setSuccess(
+          "Tasks saved. Commands and replies update on the next message; the Telegram menu refreshes within a few seconds.",
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -144,12 +153,18 @@ export function TelegramBotManager({
             Create a bot in BotFather, then install Apps → Telegram Bot on{" "}
             <code className="text-slate-300">{parent}</code>. Each customer uses their own token.
           </p>
-          <Link
-            href="/admin/apps/telegram-bot/install"
-            className="mt-4 inline-flex rounded-lg bg-panel-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-          >
-            Install Telegram Bot
-          </Link>
+          {isAdmin ? (
+            <Link
+              href="/admin/apps/telegram-bot/install"
+              className="mt-4 inline-flex rounded-lg bg-panel-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              Install Telegram Bot
+            </Link>
+          ) : (
+            <p className="mt-4 text-sm text-amber-400">
+              Ask the panel administrator to install Apps → Telegram Bot for this domain.
+            </p>
+          )}
         </Card>
       )}
 
@@ -393,6 +408,22 @@ export function TelegramBotManager({
                           })
                         }
                       />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label>Chat IDs (optional)</Label>
+                      <Input
+                        value={task.params.chatIds ?? ""}
+                        placeholder="Leave empty to post to every linked chat"
+                        onChange={(e) =>
+                          patchTask(i, {
+                            ...task,
+                            params: { ...task.params, chatIds: e.target.value },
+                          })
+                        }
+                      />
+                      <p className="mt-1 text-xs text-panel-muted">
+                        Comma-separated Telegram chat IDs. Empty means all linked chats.
+                      </p>
                     </div>
                   </div>
                 )}

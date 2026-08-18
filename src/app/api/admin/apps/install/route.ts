@@ -11,7 +11,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 3600;
 
 export async function GET() {
-  return jsonOk({ ok: true, methods: ["POST"] });
+  try {
+    await requireAdmin();
+    return jsonOk({ ok: true, methods: ["POST"] });
+  } catch (err) {
+    return handleApiError(err);
+  }
 }
 
 const BACKGROUND_TEMPLATES = new Set(["minecraft", "discord-bot", "telegram-bot"]);

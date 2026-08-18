@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CATEGORY_LABELS } from "@/lib/apps/catalog-labels";
+import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/apps/catalog-labels";
 import type { AppCategory } from "@/lib/apps/catalog-types";
 
 type CatalogRow = {
@@ -15,17 +15,6 @@ type CatalogRow = {
   icon?: string;
   category?: string;
 };
-
-const CATEGORY_ORDER: AppCategory[] = [
-  "cms",
-  "ecommerce",
-  "collaboration",
-  "education",
-  "forum",
-  "analytics",
-  "surveys",
-  "tools",
-];
 
 export function DomainAppsPicker({
   available,

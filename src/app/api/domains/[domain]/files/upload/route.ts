@@ -14,6 +14,7 @@ import {
   uploadDomainFileFromTempLive,
 } from "@/lib/domain-files-service";
 import { requireDomainApi } from "@/lib/domain-api";
+import { demoMutationBlocked } from "@/middleware/demo-readonly";
 import { PanelError } from "@/lib/errors";
 import { getMaxUploadBytes } from "@/lib/upload-limits-server";
 import { exceedsUploadLimit, formatUploadLimit } from "@/lib/upload-limits";
@@ -37,6 +38,15 @@ export async function POST(request: Request, { params }: Params) {
   let tempPaths: string[] = [];
   try {
     const { session, domain } = await requireDomainApi((await params).domain);
+    if (
+      demoMutationBlocked(
+        `/api/domains/${domain}/files/upload`,
+        "POST",
+        session.username,
+      )
+    ) {
+      return jsonError("Demo is read-only.", 403);
+    }
     const live = liveFilesEnabled();
     if (!isPanelFilesMode() && !live) {
       return jsonError("Upload requires native file access on the server.", 501);

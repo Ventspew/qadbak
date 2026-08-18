@@ -1,5 +1,5 @@
 import { BackupsManager } from "@/components/BackupsManager";
-import { requireDomainAccess } from "@/lib/domain-api";
+import { requireDomainPageNotAlias } from "@/lib/domain-api";
 import { getProvisioner } from "@/lib/provisioner";
 import { isPremiumFeatureEnabled } from "@/lib/premium/server";
 import { nativeFeatureEnabled } from "@/lib/provisioner/native-features";
@@ -8,7 +8,7 @@ import { isIndependentMode } from "@/lib/provisioner/native-stub";
 type Props = { params: Promise<{ domain: string }> };
 
 export default async function BackupsPage({ params }: Props) {
-  const { session, domain } = await requireDomainAccess((await params).domain);
+  const { session, domain } = await requireDomainPageNotAlias((await params).domain);
   let scheduled: Awaited<ReturnType<ReturnType<typeof getProvisioner>["listScheduledBackups"]>> = [];
   let error = "";
   try {
@@ -25,7 +25,7 @@ export default async function BackupsPage({ params }: Props) {
     <BackupsManager
       domain={domain}
       initialScheduled={scheduled}
-      canBackup
+      canBackup={isAdmin}
       canRestore={isAdmin}
       canPartialRestore={nativeMode && isAdmin}
       offsitePremium={offsitePremium}

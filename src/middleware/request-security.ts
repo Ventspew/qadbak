@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { trustProxyHeaders } from "@/lib/security-config";
+import { sessionCookieNames } from "@/lib/session-cookies";
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -13,6 +14,7 @@ const CSRF_EXEMPT_PREFIXES = [
   "/api/v1/",
   "/api/newsletter/",
   "/api/contact/",
+  "/api/internal/",
 ] as const;
 
 function isGitWebhook(pathname: string): boolean {
@@ -25,11 +27,9 @@ function isCsrfExempt(pathname: string): boolean {
 }
 
 function requestOrigin(request: NextRequest): string | null {
-  const host = trustProxyHeaders()
-    ? request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
-      request.headers.get("host")?.trim()
-    : request.headers.get("host")?.trim() ||
-      request.nextUrl.host;
+  // Use Host, not X-Forwarded-Host: a cross-site caller can spoof forwarded headers.
+  const host =
+    request.headers.get("host")?.trim() || request.nextUrl.host;
   if (!host) return null;
   const proto = trustProxyHeaders()
     ? request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
@@ -48,7 +48,13 @@ export function csrfCheckFailed(request: NextRequest): boolean {
   if (isCsrfExempt(pathname)) return false;
 
   const auth = request.headers.get("authorization")?.trim();
-  if (auth && /^Bearer\s+\S+/i.test(auth)) return false;
+  const hasBearer = Boolean(auth && /^Bearer\s+\S+/i.test(auth));
+  const hasCookieSession = sessionCookieNames().some(
+    (name) => Boolean(request.cookies.get(name)?.value),
+  );
+  // iOS / API-key clients send Bearer without Origin. Cookie sessions must not
+  // skip CSRF just because a fake Authorization header is present.
+  if (hasBearer && !hasCookieSession) return false;
 
   const expected = requestOrigin(request);
   if (!expected) return true;

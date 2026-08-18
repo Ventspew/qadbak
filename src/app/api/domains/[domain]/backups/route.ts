@@ -1,6 +1,6 @@
 import { auditLog } from "@/lib/audit";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { requireDomainApi } from "@/lib/domain-api";
+import { requireDomainApiNotAlias } from "@/lib/domain-api";
 import { getProvisioner } from "@/lib/provisioner";
 import { nativeFeatureEnabled } from "@/lib/provisioner/native-features";
 import { isIndependentMode } from "@/lib/provisioner/native-stub";
@@ -14,11 +14,11 @@ function nativeBackups(): boolean {
 
 export async function GET(_req: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "backups");
     const scheduled = await getProvisioner().listScheduledBackups(domain, session);
     return jsonOk({
       scheduled,
-      canBackup: true,
+      canBackup: session.role === "admin",
       native: nativeBackups(),
     });
   } catch (err) {
@@ -28,7 +28,10 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function POST(_req: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "backups");
+    if (session.role !== "admin") {
+      return jsonError("Only administrators may start a backup.", 403);
+    }
     const result = await getProvisioner().startBackup(domain, session);
     await auditLog(session.username, "backup-domain", domain);
     return jsonOk({ ok: true, result, native: nativeBackups() });
@@ -39,7 +42,7 @@ export async function POST(_req: Request, { params }: Params) {
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "backups");
     if (session.role !== "admin") {
       return jsonError("Only administrators may change backup schedules.", 403);
     }
@@ -91,7 +94,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(request: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "backups");
     if (session.role !== "admin") {
       return jsonError("Only administrators may delete backups.", 403);
     }

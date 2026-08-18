@@ -9,6 +9,16 @@ type Params = { params: Promise<{ domain: string }> };
 export async function POST(request: Request, { params }: Params) {
   try {
     const domain = decodeURIComponent((await params).domain).toLowerCase();
+    if (
+      domain.includes("..") ||
+      domain.includes("/") ||
+      domain.includes("\\") ||
+      !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(
+        domain,
+      )
+    ) {
+      return jsonError("Invalid domain.", 400);
+    }
     const secret = request.headers.get("x-qadbak-deploy-secret")?.trim();
     const cfgPath = path.join(
       process.cwd(),

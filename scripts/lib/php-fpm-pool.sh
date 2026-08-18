@@ -69,7 +69,8 @@ apply_php_fpm_pool() {
 
   local pub="${home}/public_html"
   mkdir -p "$pub" "${home}/tmp"
-  chown -R "${user}:${user}" "$home"
+  chown -R "${user}:${user}" "$pub" 2>/dev/null || true
+  chown -R "${user}:${user}" "${home}/tmp" 2>/dev/null || true
 
   local sock
   sock="$(php_fpm_socket_path "$user")"

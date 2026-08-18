@@ -27,6 +27,8 @@ export interface HostedDomain {
   "values.plan"?: string;
   user?: string;
   "values.user"?: string;
+  parent?: string;
+  type?: string;
   disk_used?: string;
   "values.disk_used"?: string;
   disk_limit?: string;

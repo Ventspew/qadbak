@@ -31,7 +31,7 @@ export function AdminSystemView({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed.");
       setFeatures(data.features ?? []);
-      setSuccess("Feature updated.");
+      setSuccess("Label updated. Services were not started or stopped.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error.");
     } finally {
@@ -52,7 +52,7 @@ export function AdminSystemView({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed.");
-      setSuccess(`config-system executed for bundle ${bundle}.`);
+      setSuccess(`Service status for bundle ${bundle} (no stack was installed).`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error.");
     } finally {
@@ -66,7 +66,11 @@ export function AdminSystemView({
       {success && <Alert variant="success">{success}</Alert>}
 
       <Card>
-        <h2 className="text-lg font-medium text-white">Globale features</h2>
+        <h2 className="text-lg font-medium text-white">Server features</h2>
+        <p className="mt-1 text-sm text-panel-muted">
+          Panel labels only. Turning a feature off here does not stop nginx,
+          mail, or DNS.
+        </p>
         <ul className="mt-4 divide-y divide-panel-border">
           {features.map((f) => (
             <li key={f.feature} className="flex items-center justify-between py-3">
@@ -99,8 +103,8 @@ export function AdminSystemView({
       <Card>
         <h2 className="text-lg font-medium text-white">Systeemconfiguratie</h2>
         <p className="mt-2 text-sm text-panel-muted">
-          Applies a server bundle via the native provisioning helper.
-          Only during a maintenance window - may reconfigure services.
+          Reports whether nginx, mail, and PHP-FPM are active, then reloads
+          nginx if the config test passes. It does not install a stack.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <select

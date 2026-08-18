@@ -177,7 +177,14 @@ export function AdminDiscordPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed");
       applyPayload(data);
-      setSuccess("Bot credentials saved. Same token is reused for Minecraft if those fields are empty.");
+      if (typeof data.warning === "string" && data.warning) {
+        setError(data.warning);
+        setSuccess("Credentials saved. The host bot container still needs a fix.");
+      } else {
+        setSuccess(
+          "Bot credentials saved. Invite this host bot to YOUR Discord. Minecraft and customer Discord Bot apps need their own application — this token is never reused.",
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {

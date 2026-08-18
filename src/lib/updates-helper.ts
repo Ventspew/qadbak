@@ -98,32 +98,31 @@ async function runUpdateHelper(args: string[]): Promise<HelperPayload> {
   );
   const trimmed = stdout.trim();
   const line = trimmed.split("\n").pop() ?? "{}";
+  let parsed: HelperPayload | null = null;
   try {
-    const parsed = JSON.parse(line) as HelperPayload;
-    if (parsed.ok === false) {
-      throw new Error(parsed.error ?? "Update helper failed");
-    }
-    return parsed;
+    parsed = JSON.parse(line) as HelperPayload;
   } catch {
     const start = trimmed.lastIndexOf("{");
     const end = trimmed.lastIndexOf("}");
     if (start >= 0 && end > start) {
-      const parsed = JSON.parse(trimmed.slice(start, end + 1)) as HelperPayload;
-      if (parsed.ok === false) {
-        throw new Error(parsed.error ?? "Update helper failed");
+      try {
+        parsed = JSON.parse(trimmed.slice(start, end + 1)) as HelperPayload;
+      } catch {
+        parsed = null;
       }
-      return parsed;
     }
+  }
+  if (!parsed || typeof parsed !== "object") {
     throw new Error(trimmed.slice(0, 200) || "Update helper returned invalid JSON.");
   }
+  if (parsed.ok === false) {
+    throw new Error(parsed.error ?? "Update helper failed");
+  }
+  return parsed;
 }
 
 export async function probeUpdatesHelperSudo(): Promise<boolean> {
-  try {
-    await requirePremiumFeature("admin-updates");
-  } catch {
-    return false;
-  }
+  await requirePremiumFeature("admin-updates");
   try {
     await runUpdateHelper(["ping"]);
     return true;

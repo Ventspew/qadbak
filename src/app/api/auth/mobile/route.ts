@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       }
       if (!verifyTotpCode(user.totpSecret, body.totp)) {
         await authFailureDelay();
+        await recordLoginRateLimitFailure(clientIp, user.username);
         await auditLog(user.username, "login-totp-failed", undefined, clientIp);
         return jsonError("Invalid authenticator code.", 401);
       }

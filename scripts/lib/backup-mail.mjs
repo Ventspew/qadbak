@@ -109,6 +109,13 @@ export async function restoreMailFromHome(home, staging, owner) {
   const legacyRoot = path.join(staging, "Maildir");
   const mailRoot = path.join(staging, "mail");
 
+  async function chownMailboxPath(local, dest) {
+    const who = local && local !== owner ? local : owner;
+    await exec("chown", ["-R", `${who}:${owner}`, dest], { timeout: 120_000 }).catch(
+      () => {},
+    );
+  }
+
   async function restoreTree(relPath, srcDir) {
     const rel = String(relPath || "").replace(/^\/+/, "");
     const dest =
@@ -123,16 +130,12 @@ export async function restoreMailFromHome(home, staging, owner) {
     await mkdir(path.dirname(dest), { recursive: true });
     await rm(dest, { recursive: true, force: true }).catch(() => {});
     await cp(srcDir, dest, { recursive: true });
-    await exec("chown", ["-R", `${owner}:${owner}`, dest], { timeout: 120_000 }).catch(
-      () => {},
-    );
+    const mailboxLocal = rel.startsWith("homes/") ? rel.split("/")[1] : owner;
+    await chownMailboxPath(mailboxLocal, dest);
     if (rel.startsWith("homes/")) {
       const parts = rel.split("/");
       if (parts.length >= 2) {
-        const subHome = path.join(home, "homes", parts[1]);
-        await exec("chown", ["-R", `${owner}:${owner}`, subHome], {
-          timeout: 120_000,
-        }).catch(() => {});
+        await chownMailboxPath(parts[1], path.join(home, "homes", parts[1]));
       }
     }
     restored.push(rel);
@@ -191,7 +194,7 @@ export async function restoreMailFromHome(home, staging, owner) {
         await mkdir(path.dirname(absDest), { recursive: true });
         await rm(absDest, { recursive: true, force: true }).catch(() => {});
         await cp(md, absDest, { recursive: true });
-        await exec("chown", ["-R", `${owner}:${owner}`, absDest], {
+        await exec("chown", ["-R", `${name}:${owner}`, absDest], {
           timeout: 120_000,
         }).catch(() => {});
         restored.push(absDest);
@@ -202,7 +205,7 @@ export async function restoreMailFromHome(home, staging, owner) {
       await mkdir(path.dirname(dest), { recursive: true });
       await rm(dest, { recursive: true, force: true }).catch(() => {});
       await cp(md, dest, { recursive: true });
-      await exec("chown", ["-R", `${owner}:${owner}`, dest], { timeout: 120_000 }).catch(
+      await exec("chown", ["-R", `${name}:${owner}`, dest], { timeout: 120_000 }).catch(
         () => {},
       );
       restored.push(`homes/${name}/Maildir`);

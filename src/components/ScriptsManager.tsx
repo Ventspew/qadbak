@@ -136,7 +136,7 @@ export function ScriptsManager({
       <DomainPageHeader
         domain={domain}
         title="Apps"
-        description="Install from the app store catalog (25 apps) into this domain"
+        description="Install from the app store catalog into this domain"
       />
       {error && <Alert>{error}</Alert>}
       {success && <Alert variant="success">{success}</Alert>}

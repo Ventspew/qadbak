@@ -19,15 +19,14 @@ export default async function WebmailPage({ params }: Props) {
           mailboxes, forwarding, and delivery logs - use your own mail client or
           activate Premium in Server admin → License.
         </p>
-        <Link
-          href={`/domains/${encodeURIComponent(domain)}`}
-          className="text-panel-link hover:underline"
-        >
+        <Link href={`/domains/${encodeURIComponent(domain)}`} className="text-panel-link hover:underline">
           Back to {domain}
         </Link>
-        <Link href="/admin/license" className="ml-4 text-panel-link hover:underline">
-          License
-        </Link>
+        {session.role === "admin" && (
+          <Link href="/admin/license" className="ml-4 text-panel-link hover:underline">
+            License
+          </Link>
+        )}
       </div>
     );
   }

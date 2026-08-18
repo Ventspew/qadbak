@@ -1,6 +1,6 @@
 import { auditLog } from "@/lib/audit";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { requireDomainApi } from "@/lib/domain-api";
+import { requireDomainApiNotAlias } from "@/lib/domain-api";
 import { beginJournal } from "@/lib/journal";
 import { getProvisioner } from "@/lib/provisioner";
 import {
@@ -12,7 +12,7 @@ type Params = { params: Promise<{ domain: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "aliases");
     const aliases = await getProvisioner().listAliases(domain, session);
     return jsonOk({ aliases });
   } catch (err) {
@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: Params) {
   return runWithJournalStore(async () => {
     let journal: ReturnType<typeof beginJournal> | undefined;
     try {
-      const { session, domain } = await requireDomainApi((await params).domain);
+      const { session, domain } = await requireDomainApiNotAlias((await params).domain, "aliases");
       const body = (await request.json()) as { from?: string; to?: string };
       if (!body.from || !body.to) {
         return jsonError("From and to are required.");
@@ -63,7 +63,7 @@ export async function DELETE(request: Request, { params }: Params) {
   return runWithJournalStore(async () => {
     let journal: ReturnType<typeof beginJournal> | undefined;
     try {
-      const { session, domain } = await requireDomainApi((await params).domain);
+      const { session, domain } = await requireDomainApiNotAlias((await params).domain, "aliases");
       const body = (await request.json()) as { from?: string; to?: string };
       if (!body.from) return jsonError("Alias (from) is required.");
       // Capture the current target before delete so we can re-create on undo.

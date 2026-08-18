@@ -13,3 +13,17 @@ export const CATEGORY_LABELS: Record<AppCategory, string> = {
   finance: "Finance",
   support: "Support & helpdesk",
 };
+
+export const CATEGORY_ORDER: AppCategory[] = [
+  "cms",
+  "ecommerce",
+  "collaboration",
+  "education",
+  "forum",
+  "analytics",
+  "surveys",
+  "media",
+  "finance",
+  "support",
+  "tools",
+];

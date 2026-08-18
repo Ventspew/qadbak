@@ -111,5 +111,6 @@ function pageTitleFromPath(pathname: string): string | null {
     return segment?.replace(/-/g, " ") ?? "Server admin";
   }
   if (pathname.startsWith("/account")) return "Account";
+  if (pathname.startsWith("/settings")) return "Settings";
   return null;
 }

@@ -153,7 +153,8 @@ fi
 if [[ ! -d "$BAK" ]]; then
   mkdir -p "$BAK" && created_any=1
 fi
-if chown -R "${USER}:${USER}" "$HOME_DIR" 2>/dev/null; then
+# public_html + backups only — mailbox homes/ must keep their own UIDs.
+if chown -R "${USER}:${USER}" "$PUB" "$BAK" 2>/dev/null; then
   if (( created_any )); then
     echo "    created missing public_html/backups + chown ${USER}:${USER}"
   else

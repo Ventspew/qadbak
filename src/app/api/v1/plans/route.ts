@@ -16,6 +16,13 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const key = await requireApiV1("limits:write");
+    if (key.resellerId) {
+      return apiV1Error(
+        Object.assign(new Error("Reseller keys cannot change global plans."), {
+          status: 403,
+        }),
+      );
+    }
     const body = (await request.json()) as {
       name?: string;
       disk?: string;

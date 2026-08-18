@@ -17,11 +17,7 @@ export type Pm2Process = {
 };
 
 export async function probePanelPm2Sudo(): Promise<boolean> {
-  try {
-    await requirePremiumFeature("dashboard-panel-control");
-  } catch {
-    return false;
-  }
+  await requirePremiumFeature("dashboard-panel-control");
   try {
     await access(PANEL_PM2_WRAPPER);
     await execFileAsync("sudo", ["-n", PANEL_PM2_WRAPPER, "__probe__"], {

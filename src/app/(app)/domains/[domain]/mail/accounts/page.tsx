@@ -15,6 +15,11 @@ export default async function MailAccountsPage({ params }: Props) {
   }
 
   return (
-    <EmailManager domain={domain} initialUsers={users} initialError={error} />
+    <EmailManager
+      domain={domain}
+      initialUsers={users}
+      initialError={error}
+      isAdmin={session.role === "admin"}
+    />
   );
 }

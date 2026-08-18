@@ -7,15 +7,17 @@ import { featuresForDomain } from "@/lib/features";
 export function DomainNav({
   domain,
   isAdmin,
+  type,
 }: {
   domain: string;
   isAdmin: boolean;
+  type?: string;
 }) {
   const pathname = usePathname();
   const enc = encodeURIComponent(domain);
   const base = `/domains/${enc}`;
   const role = isAdmin ? "admin" : "client";
-  const features = featuresForDomain(role, isAdmin);
+  const features = featuresForDomain(role, isAdmin, { type });
 
   return (
     <nav className="flex flex-wrap gap-2 border-b border-panel-border pb-4">

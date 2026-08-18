@@ -375,7 +375,7 @@ export function ImapMailboxesManager({
         Browse folders and read mail via{" "}
         <a
           href="https://doc.dovecot.org/"
-          className="text-accent hover:underline"
+          className="text-panel-accent hover:underline"
           target="_blank"
           rel="noreferrer"
         >
@@ -577,7 +577,7 @@ export function ImapMailboxesManager({
               </pre>
               {selectedMessage.rawHeaders && (
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-accent">
+                  <summary className="cursor-pointer text-panel-accent">
                     Raw headers
                   </summary>
                   <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-panel-muted">

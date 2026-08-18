@@ -51,8 +51,9 @@ CACHE_STATIC="$(website_cache_static_assets "$DOMAIN")"
 
 [[ -d "$PUB" ]] || mkdir -p "$PUB"
 if [[ "$PUB" == /home/* ]]; then
-  chown -R "${USER}:${USER}" "/home/${USER}" 2>/dev/null || {
-    echo "SKIP — cannot chown /home/${USER} for $DOMAIN" >&2
+  # Never chown the whole home: mailbox unix users live under homes/.
+  chown -R "${USER}:${USER}" "$PUB" 2>/dev/null || {
+    echo "SKIP — cannot chown $PUB for $DOMAIN" >&2
     exit 1
   }
   ensure_home_web_access "$USER"
@@ -325,15 +326,19 @@ if [[ "$ISSUE_SSL_RESOLVED" == "1" ]] && command -v certbot &>/dev/null; then
     LE_EMAIL="${QADBAK_LE_EMAIL:-${LE_EMAIL:-admin@${DOMAIN}}}"
     echo "==> TLS: certbot webroot for $DOMAIN (email: $LE_EMAIL)"
     cert_ok=0
+    extra_d=()
+    if [[ -n "${EXTRA_SSL_HOST:-}" && "$EXTRA_SSL_HOST" != "$DOMAIN" && "$EXTRA_SSL_HOST" != "www.${DOMAIN}" ]]; then
+      extra_d=(-d "$EXTRA_SSL_HOST")
+    fi
     if [[ "$INCLUDE_WWW" == "1" ]]; then
-      if certbot certonly --webroot -w "$PUB" -d "$DOMAIN" -d "www.${DOMAIN}" \
+      if certbot certonly --webroot -w "$PUB" -d "$DOMAIN" -d "www.${DOMAIN}" "${extra_d[@]}" \
            --non-interactive --agree-tos -m "$LE_EMAIL" --keep-until-expiring; then
         cert_ok=1
         echo "    OK — Let's Encrypt cert issued via webroot"
       fi
     fi
     if [[ "$cert_ok" != "1" ]]; then
-      if certbot certonly --webroot -w "$PUB" -d "$DOMAIN" \
+      if certbot certonly --webroot -w "$PUB" -d "$DOMAIN" "${extra_d[@]}" \
            --non-interactive --agree-tos -m "$LE_EMAIL" --keep-until-expiring; then
         cert_ok=1
         echo "    OK — Let's Encrypt cert issued for $DOMAIN"

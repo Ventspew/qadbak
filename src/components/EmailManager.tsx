@@ -19,10 +19,12 @@ export function EmailManager({
   domain,
   initialUsers,
   initialError,
+  isAdmin = false,
 }: {
   domain: string;
   initialUsers: HostedMailbox[];
   initialError: string;
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const enc = encodeURIComponent(domain);
@@ -162,7 +164,9 @@ export function EmailManager({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Quota update failed.");
-      setSuccess(`Quota for ${quotaUser} set to ${quotaMb} MB.`);
+      setSuccess(
+        `Panel quota for ${quotaUser} saved as ${quotaMb} MB (not enforced by Dovecot).`,
+      );
       setQuotaUser(null);
       setQuotaMb("");
       await refresh();
@@ -184,14 +188,26 @@ export function EmailManager({
             ← {domain}
           </Link>
         </p>
-        <h1 className="mt-2 text-2xl font-semibold text-white">Email</h1>
+        <h1 className="mt-2 text-2xl font-semibold text-white">Mail accounts</h1>
         <p className="mt-1 text-sm text-panel-muted">
-          Mailboxes for {domain}. Use the{" "}
-          <Link href={`/domains/${enc}/mail/imap`} className="text-accent hover:underline">
-            IMAP
-          </Link>{" "}
-          tab or <strong className="text-white">Qmail</strong> per mailbox to read and send mail. For external clients: IMAP port 993, SMTP submission
-          port 587 (same mailbox password).
+          Mailboxes for {domain}. Quota values are stored in the panel for
+          display — Dovecot does not reject mail when they are exceeded.
+          {isAdmin ? (
+            <>
+              {" "}
+              Use the{" "}
+              <Link href={`/domains/${enc}/mail/imap`} className="text-panel-accent hover:underline">
+                IMAP
+              </Link>{" "}
+              tab or <strong className="text-white">Qmail</strong> per mailbox to read and send mail.
+            </>
+          ) : (
+            <>
+              {" "}
+              Open <strong className="text-white">Qmail</strong> on a mailbox to read and send mail.
+            </>
+          )}{" "}
+          For external clients: IMAP port 993, SMTP submission port 587 (same mailbox password).
         </p>
       </div>
 

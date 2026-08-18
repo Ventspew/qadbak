@@ -8,7 +8,8 @@ import { pipeline } from "node:stream/promises";
 
 import { auditLog } from "@/lib/audit";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { requireDomainApi } from "@/lib/domain-api";
+import { requireDomainApiNotAlias } from "@/lib/domain-api";
+import { demoMutationBlocked } from "@/middleware/demo-readonly";
 import { getProvisioner } from "@/lib/provisioner";
 import { nativeFeatureEnabled } from "@/lib/provisioner/native-features";
 import { isIndependentMode } from "@/lib/provisioner/native-stub";
@@ -38,7 +39,16 @@ async function streamFileToTemp(file: File): Promise<{ tempPath: string; size: n
 export async function POST(request: Request, { params }: Params) {
   let tempPath: string | null = null;
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "backups");
+    if (
+      demoMutationBlocked(
+        `/api/domains/${domain}/backups/upload`,
+        "POST",
+        session.username,
+      )
+    ) {
+      return jsonError("Demo is read-only.", 403);
+    }
     if (session.role !== "admin") {
       return jsonError("Only administrators may upload backups.", 403);
     }

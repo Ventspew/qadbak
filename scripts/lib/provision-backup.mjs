@@ -26,6 +26,7 @@ import {
   loadRegistry,
   readDomainConfigJson,
   writeDomainConfigJson,
+  assertNotAliasDomain,
 } from "./provisioning-common.mjs";
 import { backupMailToStaging, restoreMailFromHome } from "./backup-mail.mjs";
 import { backupDomainExtras, restoreDomainExtras, listDomainSettingsFiles } from "./backup-extras.mjs";
@@ -69,8 +70,44 @@ function safeBackupName(name) {
   return base;
 }
 
-function backupsDir(home) {
+function backupsRoot(home) {
   return path.join(home, "backups");
+}
+
+function backupsDir(home, domain) {
+  const d = String(domain || "")
+    .trim()
+    .toLowerCase();
+  return d ? path.join(home, "backups", d) : backupsRoot(home);
+}
+
+async function resolveExistingBackup(home, domain, name) {
+  const fname = safeBackupName(name);
+  const candidates = [
+    path.resolve(path.join(backupsDir(home, domain), fname)),
+    path.resolve(path.join(backupsRoot(home), fname)),
+  ];
+  const allowed = [
+    path.resolve(backupsDir(home, domain)),
+    path.resolve(backupsRoot(home)),
+  ];
+  for (const full of candidates) {
+    if (!allowed.some((dir) => full.startsWith(`${dir}${path.sep}`))) continue;
+    if (await fileExists(full)) return full;
+  }
+  return null;
+}
+
+async function chownRestoredSite(user, home) {
+  const targets = [
+    path.join(home, "public_html"),
+    path.join(home, "backups"),
+    path.join(home, "tmp"),
+    path.join(home, "Maildir"),
+  ];
+  for (const t of targets) {
+    await exec("chown", ["-R", `${user}:${user}`, t], { timeout: 120_000 }).catch(() => {});
+  }
 }
 
 function qadbakCronUser() {
@@ -151,6 +188,7 @@ async function syncAllBackupCrons() {
   for (const row of rows) {
     const domain = String(row.name || "").trim();
     if (!domain || row.demoOnly) continue;
+    if (String(row.type || "").toLowerCase() === "alias") continue;
     const sched = await loadSchedule(domain);
     if (sched.enabled) {
       lines.push(
@@ -197,8 +235,8 @@ async function applyBackupSchedule(
   return { schedule: sched, backupCreated };
 }
 
-async function pruneOldBackups(home, retain) {
-  const dir = backupsDir(home);
+async function pruneOldBackups(home, domain, retain) {
+  const dir = backupsDir(home, domain);
   const files = [];
   try {
     for (const name of await readdir(dir)) {
@@ -219,39 +257,51 @@ async function pruneOldBackups(home, retain) {
 /** Newest local backup age in days, or null when none exist under /home/{user}/backups. */
 export async function backupNewestAgeDays(domain) {
   const { home } = await resolveDomainUser(domain);
-  const dir = backupsDir(home);
+  const d = String(domain).toLowerCase();
   let newest = 0;
-  for (const name of await readdir(dir).catch(() => [])) {
-    if (!name.endsWith(".tar.gz")) continue;
-    const st = await stat(path.join(dir, name));
-    if (st.mtimeMs > newest) newest = st.mtimeMs;
+  for (const dir of [backupsDir(home, d), backupsRoot(home)]) {
+    for (const name of await readdir(dir).catch(() => [])) {
+      if (!name.endsWith(".tar.gz")) continue;
+      if (dir === backupsRoot(home) && !name.startsWith(`${d}-`)) continue;
+      const st = await stat(path.join(dir, name));
+      if (st.mtimeMs > newest) newest = st.mtimeMs;
+    }
   }
   if (!newest) return null;
   return Math.floor((Date.now() - newest) / 86_400_000);
 }
 
 export async function backupList(domain) {
+  await assertNotAliasDomain(domain, "backups");
   const { home } = await resolveDomainUser(domain);
-  const dir = backupsDir(home);
+  const d = String(domain).toLowerCase();
+  const dir = backupsDir(home, d);
   await mkdir(dir, { recursive: true });
   const files = [];
-  for (const name of await readdir(dir).catch(() => [])) {
-    if (!name.endsWith(".tar.gz")) continue;
-    const full = path.join(dir, name);
-    const st = await stat(full);
-    files.push({
-      name,
-      sizeBytes: st.size,
-      modified: st.mtime.toISOString(),
-      kind: name.includes("-scheduled-") ? "scheduled" : "manual",
-    });
+  const seen = new Set();
+  for (const scan of [dir, backupsRoot(home)]) {
+    for (const name of await readdir(scan).catch(() => [])) {
+      if (!name.endsWith(".tar.gz")) continue;
+      if (scan === backupsRoot(home) && !name.startsWith(`${d}-`)) continue;
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const full = path.join(scan, name);
+      const st = await stat(full);
+      files.push({
+        name,
+        sizeBytes: st.size,
+        modified: st.mtime.toISOString(),
+        kind: name.includes("-scheduled-") ? "scheduled" : "manual",
+        _dir: scan,
+      });
+    }
   }
   files.sort((a, b) => b.modified.localeCompare(a.modified));
   for (const f of files.slice(0, 40)) {
     try {
       const { stdout } = await exec(
         "tar",
-        ["-xOf", path.join(dir, f.name), "manifest.json"],
+        ["-xOf", path.join(f._dir || dir, f.name), "manifest.json"],
         { timeout: 60_000, maxBuffer: 512 * 1024 },
       );
       const manifest = JSON.parse(stdout);
@@ -264,13 +314,18 @@ export async function backupList(domain) {
     }
   }
   const sched = await loadSchedule(domain);
-  emit({ ok: true, backups: files, schedule: sched });
+  emit({
+    ok: true,
+    backups: files.map(({ _dir, ...rest }) => rest),
+    schedule: sched,
+  });
 }
 
 export async function backupCreate(domain, scopeArg) {
+  await assertNotAliasDomain(domain, "backups");
   const scope = String(scopeArg || "full").toLowerCase();
   const { user, home } = await resolveDomainUser(domain);
-  const dir = backupsDir(home);
+  const dir = backupsDir(home, domain);
   await mkdir(dir, { recursive: true });
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -381,7 +436,7 @@ export async function backupCreate(domain, scopeArg) {
   await rm(staging, { recursive: true, force: true });
 
   const sched = await loadSchedule(domain);
-  await pruneOldBackups(home, sched.retain);
+  await pruneOldBackups(home, domain, sched.retain);
 
   let offsite = { uploaded: false };
   try {
@@ -404,9 +459,10 @@ export async function backupCreate(domain, scopeArg) {
 
 export async function backupDelete(domain, name) {
   const fname = safeBackupName(name);
-  const { user, home } = await resolveDomainUser(domain);
-  const full = path.join(backupsDir(home), fname);
-  if (!(await fileExists(full))) fail(`Backup not found: ${fname}`);
+  await resolveDomainUser(domain);
+  const { home } = await resolveDomainUser(domain);
+  const full = await resolveExistingBackup(home, domain, fname);
+  if (!full) fail(`Backup not found: ${fname}`);
   await rm(full);
   emit({ ok: true, deleted: fname });
 }
@@ -445,7 +501,7 @@ export async function backupUpload(domain, tempPath, destNameArg) {
   const { resolved, sizeBytes } = await assertPanelUploadTemp(tempPath);
   await assertGzipArchive(resolved);
 
-  const dir = backupsDir(home);
+  const dir = backupsDir(home, domain);
   await mkdir(dir, { recursive: true });
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -462,7 +518,7 @@ export async function backupUpload(domain, tempPath, destNameArg) {
   await exec("chown", [`${user}:${user}`, finalPath]);
 
   const sched = await loadSchedule(domain);
-  await pruneOldBackups(home, sched.retain);
+  await pruneOldBackups(home, domain, sched.retain);
 
   emit({
     ok: true,
@@ -477,10 +533,8 @@ export async function backupUpload(domain, tempPath, destNameArg) {
 export async function backupResolveDownload(domain, name) {
   const fname = safeBackupName(name);
   const { home } = await resolveDomainUser(domain);
-  const dir = path.resolve(backupsDir(home));
-  const full = path.resolve(path.join(dir, fname));
-  if (!full.startsWith(`${dir}${path.sep}`)) fail("Invalid backup path");
-  if (!(await fileExists(full))) fail(`Backup not found: ${fname}`);
+  const full = await resolveExistingBackup(home, domain, fname);
+  if (!full) fail(`Backup not found: ${fname}`);
   const st = await stat(full);
   if (!st.isFile()) fail("Not a backup file");
   emit({ ok: true, path: full, fileName: fname, sizeBytes: st.size });
@@ -489,11 +543,19 @@ export async function backupResolveDownload(domain, name) {
 export async function backupRestore(domain, source, testOnly) {
   const d = String(domain).trim().toLowerCase();
   const { user, home } = await resolveDomainUser(d);
+  const dir = path.resolve(backupsDir(home, d));
+  const legacy = path.resolve(backupsRoot(home));
   let archive = String(source || "").trim();
   if (!archive) fail("source required");
   if (!archive.includes("/")) {
-    archive = path.join(backupsDir(home), safeBackupName(archive));
-  } else if (!archive.startsWith(backupsDir(home))) {
+    const found = await resolveExistingBackup(home, d, archive);
+    archive = found || path.join(dir, safeBackupName(archive));
+  }
+  archive = path.resolve(archive);
+  if (
+    !archive.startsWith(`${dir}${path.sep}`) &&
+    !archive.startsWith(`${legacy}${path.sep}`)
+  ) {
     fail("Restore source must be under domain backups directory");
   }
   if (!(await fileExists(archive))) fail(`Archive not found: ${archive}`);
@@ -582,7 +644,7 @@ export async function backupRestore(domain, source, testOnly) {
   }
 
   await rm(staging, { recursive: true, force: true });
-  await exec("chown", ["-R", `${user}:${user}`, home], { timeout: 120_000 }).catch(() => {});
+  await chownRestoredSite(user, home);
   emit({ ok: true, restored, archive: path.basename(archive) });
 }
 
@@ -724,14 +786,6 @@ export async function backupPolicySet(domain, jsonArg) {
   emit({ ok: true, policy: next });
 }
 
-function safeArchivePath(home, name) {
-  const fname = safeBackupName(name);
-  const dir = path.resolve(backupsDir(home));
-  const full = path.resolve(path.join(dir, fname));
-  if (!full.startsWith(`${dir}${path.sep}`)) fail("Invalid backup path");
-  return full;
-}
-
 function safeRelativePath(rel) {
   const p = String(rel || "").replace(/\\/g, "/").replace(/^\/+/, "");
   if (!p || p.includes("..")) fail("Invalid path in archive");
@@ -740,8 +794,8 @@ function safeRelativePath(rel) {
 
 export async function backupArchiveList(domain, name, prefixArg) {
   const { home } = await resolveDomainUser(domain);
-  const archive = safeArchivePath(home, name);
-  if (!(await fileExists(archive))) fail(`Backup not found: ${name}`);
+  const archive = await resolveExistingBackup(home, domain, name);
+  if (!archive) fail(`Backup not found: ${name}`);
   const prefix = prefixArg ? safeRelativePath(prefixArg) : "";
   const { stdout } = await exec("tar", ["-tzf", archive], {
     timeout: 120_000,
@@ -776,7 +830,8 @@ export async function backupArchiveList(domain, name, prefixArg) {
 export async function backupRestoreFile(domain, name, relPath) {
   const d = String(domain).trim().toLowerCase();
   const { user, home } = await resolveDomainUser(d);
-  const archive = safeArchivePath(home, name);
+  const archive = await resolveExistingBackup(home, d, name);
+  if (!archive) fail(`Backup not found: ${name}`);
   const rel = safeRelativePath(relPath);
   if (!rel.startsWith("public_html/")) {
     fail("Clients may only restore files under public_html/");
@@ -804,7 +859,8 @@ export async function backupRestoreFile(domain, name, relPath) {
 export async function backupRestoreDatabase(domain, name, dbName) {
   const d = String(domain).trim().toLowerCase();
   const { user, home } = await resolveDomainUser(d);
-  const archive = safeArchivePath(home, name);
+  const archive = await resolveExistingBackup(home, d, name);
+  if (!archive) fail(`Backup not found: ${name}`);
   const db = String(dbName || "").replace(/[^a-zA-Z0-9_]/g, "");
   if (!db) fail("database name required");
   const prefix = `${user}_`;

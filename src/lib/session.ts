@@ -130,11 +130,14 @@ export async function verifySessionToken(
     const iat =
       typeof payload.iat === "number" ? payload.iat : Math.floor(Date.now() / 1000);
     if (await isUserSessionRevoked(userId, iat)) return null;
+    const { findUserById } = await import("./users");
+    const live = await findUserById(userId);
+    if (!live) return null;
     return {
       userId,
-      username: String(payload.username),
-      role: payload.role as SessionPayload["role"],
-      domains: (payload.domains as string[]) ?? [],
+      username: live.username,
+      role: live.role,
+      domains: live.domains ?? [],
       jti,
     };
   } catch {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile, access, writeFile, mkdir } from "node:fs/promises";
+import { readFile, access, writeFile, mkdir, rename } from "node:fs/promises";
 import { writeSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -16,9 +16,26 @@ export function emit(obj) {
   }
 }
 
+export class ProvisioningFail extends Error {
+  constructor(message, code = 1) {
+    super(String(message));
+    this.name = "ProvisioningFail";
+    this.code = code;
+  }
+}
+
+/** Throw so nested helpers can catch. The CLI wrapper exits in main().catch. */
 export function fail(message, code = 1) {
-  emit({ ok: false, error: String(message) });
-  process.exit(code);
+  throw new ProvisioningFail(message, code);
+}
+
+export async function assertNotAliasDomain(domain, service) {
+  const rows = await loadRegistry();
+  const want = String(domain || "").toLowerCase();
+  const hit = rows.find((r) => String(r.name).toLowerCase() === want);
+  if (String(hit?.type || "").toLowerCase() === "alias") {
+    fail(`Alias domains have no ${service}. Use the parent domain.`);
+  }
 }
 
 /** Nginx config filenames use underscores (dots break batch cleanup on some hosts). */
@@ -44,9 +61,15 @@ export async function loadRegistry() {
   }
 }
 
+export async function writeJsonFileAtomic(filePath, value) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await rename(tmp, filePath);
+}
+
 export async function saveRegistry(rows) {
-  await mkdir(path.dirname(REGISTRY), { recursive: true });
-  await writeFile(REGISTRY, `${JSON.stringify(rows, null, 2)}\n`, "utf8");
+  await writeJsonFileAtomic(REGISTRY, rows);
 }
 
 export function unixUserExists(name) {

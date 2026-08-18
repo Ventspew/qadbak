@@ -356,13 +356,17 @@ def start_bot() -> None:
 
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
-    def chat_ids() -> list[str]:
+    def chat_ids(wanted: list[str] | None = None) -> list[str]:
         ids = []
         if DEFAULT_CHAT:
             ids.append(DEFAULT_CHAT)
         for cid in load_subs().get("chats", {}):
             if cid not in ids:
                 ids.append(cid)
+        if wanted:
+            want = {str(x).strip() for x in wanted if str(x).strip()}
+            if want:
+                return [cid for cid in ids if cid in want]
         return ids
 
     async def remember(update: Update) -> None:
@@ -540,8 +544,8 @@ def start_bot() -> None:
             text=text.replace("{user}", name)[:1900],
         )
 
-    async def post_all(text: str) -> None:
-        for cid in chat_ids():
+    async def post_all(text: str, wanted: list[str] | None = None) -> None:
+        for cid in chat_ids(wanted):
             try:
                 await app.bot.send_message(chat_id=int(cid) if re.match(r"-?\d+$", cid) else cid, text=text[:1900])
             except Exception as e:
@@ -581,7 +585,13 @@ def start_bot() -> None:
             key = str(row.get("id") or text[:24] or "post")
             last_at = float(scheduled.get(key) or 0)
             if text and (not last_at or now - last_at >= minutes * 60):
-                await post_all(text)
+                raw_ids = params.get("chatIds") or params.get("chat_ids") or ""
+                wanted = [
+                    p.strip()
+                    for p in str(raw_ids).replace(";", ",").split(",")
+                    if p.strip()
+                ]
+                await post_all(text, wanted or None)
                 scheduled[key] = now
                 changed = True
         if changed:

@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { backupNewestAgeDays } from "./provision-backup.mjs";
+import { QADBAK_POSTFIX_DOMAINS } from "./mail-layout.mjs";
 import {
   emit,
   fail,
@@ -333,20 +334,33 @@ export async function domainHealthBatch(payloadJson) {
   const filter = parseRegistryFilter(payloadJson);
   const registry = await loadRegistry();
   const domains = Array.isArray(registry) ? registry : [];
+  const mailDomains = new Set();
+  try {
+    const raw = await readFile(QADBAK_POSTFIX_DOMAINS, "utf8");
+    for (const line of raw.split("\n")) {
+      const d = line.trim().split(/\s+/)[0]?.toLowerCase();
+      if (d && !d.startsWith("#")) mailDomains.add(d);
+    }
+  } catch {
+    /* mail maps not written yet */
+  }
   const items = [];
   for (const row of domains) {
     const name = String(row.name || row.domain || "").trim();
     if (!name) continue;
     if (!registryMatchesDemoFilter(row, filter)) continue;
+    const isAlias = String(row.type || "").toLowerCase() === "alias";
     const disabled = row.disabled === true || row.disabled === "1" || row.disabled === 1;
     const diskUsed = parseFloat(String(row.disk_used ?? row.diskUsed ?? "0")) || 0;
     const diskLimit = parseFloat(String(row.disk_limit ?? row.diskLimit ?? "0")) || null;
-    const sslDays = await sslDaysLeft(name);
+    const sslDays = isAlias ? null : await sslDaysLeft(name);
     let backupAge = null;
-    try {
-      backupAge = await backupNewestAgeDays(name);
-    } catch {
-      backupAge = null;
+    if (!isAlias) {
+      try {
+        backupAge = await backupNewestAgeDays(name);
+      } catch {
+        backupAge = null;
+      }
     }
 
     let website = {
@@ -364,14 +378,14 @@ export async function domainHealthBatch(payloadJson) {
     }
 
     const actions = [];
-    if (sslDays !== null && sslDays <= 14) {
+    if (!isAlias && sslDays !== null && sslDays <= 14) {
       actions.push({
         label: sslDays <= 0 ? "SSL expired" : `SSL expires in ${sslDays}d`,
         href: `/domains/${encodeURIComponent(name)}/ssl`,
         severity: sslDays <= 7 ? "error" : "warning",
       });
     }
-    if (backupAge === null || backupAge > 7) {
+    if (!isAlias && (backupAge === null || backupAge > 7)) {
       actions.push({
         label: backupAge === null ? "No backup found" : `Last backup ${backupAge}d ago`,
         href: `/domains/${encodeURIComponent(name)}/backups`,
@@ -385,7 +399,7 @@ export async function domainHealthBatch(payloadJson) {
         severity: diskUsed / diskLimit > 0.95 ? "error" : "warning",
       });
     }
-    if (!disabled && website.dnsPending) {
+    if (!isAlias && !disabled && website.dnsPending) {
       actions.push({
         label: "DNS not live yet — site ready on server",
         href: `/domains/${encodeURIComponent(name)}/dns`,
@@ -412,6 +426,7 @@ export async function domainHealthBatch(payloadJson) {
 
     items.push({
       domain: name,
+      type: isAlias ? "alias" : String(row.type || "top"),
       disabled,
       sslDaysLeft: sslDays,
       backupAgeDays: backupAge,
@@ -420,7 +435,7 @@ export async function domainHealthBatch(payloadJson) {
       websiteOk: disabled ? false : website.websiteOk,
       dnsPending: website.dnsPending,
       localWebsiteOk: website.localOk,
-      mailOk: true,
+      mailOk: !disabled && !isAlias && mailDomains.has(name.toLowerCase()),
       containersStopped,
       actions,
     });

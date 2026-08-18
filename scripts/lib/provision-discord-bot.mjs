@@ -5,7 +5,7 @@ import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import path from "node:path";
 import { dnsAdd } from "./provision-dns.mjs";
-import { sslIssue } from "./provision-ssl.mjs";
+import { sslIssueBestEffort } from "./provision-ssl.mjs";
 import {
   emit,
   fail,
@@ -351,7 +351,7 @@ export async function discordBotInstall(domain, payloadJson) {
   await mkdir(path.join(appsDir, "www"), { recursive: true });
   await upsertProxy(botHost, "/", `http://127.0.0.1:${httpPort}`);
   await reloadNginx(botHost, user);
-  await sslIssue(botHost, botHost).catch(() => {});
+  await sslIssueBestEffort(botHost, botHost);
 
   const cfg = {
     parentDomain: parent,

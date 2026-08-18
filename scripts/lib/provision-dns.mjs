@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, rename, unlink } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -12,6 +12,14 @@ import {
 } from "./provisioning-common.mjs";
 import { validateDnsRecord } from "./validate-dns-record.mjs";
 import { assertDomainName, escapeShellSingle } from "./security-utils.mjs";
+import {
+  deleteZoneText,
+  mapNameFromParentZone,
+  mapNameToParentZone,
+  parseZone,
+  subLabelForParent,
+  upsertZoneText,
+} from "./dns-zone-edit.mjs";
 
 const exec = promisify(execFile);
 
@@ -96,7 +104,7 @@ async function zoneFromFind(domain) {
   return null;
 }
 
-async function locateZonePath(domain) {
+export async function locateZonePath(domain) {
   const cached = await zoneFromRegistry(domain);
   if (cached && (await fileExists(cached))) return cached;
 
@@ -131,6 +139,24 @@ async function domainInRegistry(domain) {
   return rows.some((r) => String(r.name).toLowerCase() === domain.toLowerCase());
 }
 
+export async function dnsZoneContext(domain) {
+  const want = String(domain || "")
+    .trim()
+    .toLowerCase();
+  const rows = await loadRegistry();
+  const hit = rows.find((r) => String(r.name).toLowerCase() === want);
+  const type = String(hit?.type || "top").toLowerCase();
+  if (type === "alias") {
+    fail("Alias domains have no DNS zone. Use the parent domain.");
+  }
+  if (type === "sub" && hit?.parent) {
+    const origin = String(hit.parent).toLowerCase();
+    const label = subLabelForParent(want, origin);
+    if (label) return { origin, label, type };
+  }
+  return { origin: want, label: "", type: type || "top" };
+}
+
 /** Create BIND zone for a panel domain (idempotent). Requires root (provisioning helper). */
 export async function ensureBindZone(domain) {
   const existing = await locateZonePath(domain);
@@ -162,121 +188,77 @@ export async function findZonePath(domain) {
   );
 }
 
-/** Collapse BIND multi-line SOA ( ... ) into one line for parsing. */
-function normalizeZoneText(text) {
-  const out = [];
-  let soaLine = null;
-  for (const raw of text.split("\n")) {
-    const line = raw.split(";")[0].trim();
-    if (!line) continue;
-    if (soaLine !== null) {
-      soaLine += ` ${line}`;
-      if (line.includes(")")) {
-        out.push(soaLine);
-        soaLine = null;
-      }
-      continue;
-    }
-    if (/\bSOA\b/i.test(line) && line.includes("(") && !line.includes(")")) {
-      soaLine = line;
-      continue;
-    }
-    out.push(line);
+async function reloadZone(origin) {
+  try {
+    await exec("rndc", ["reload", origin], { timeout: 30_000 });
+    return;
+  } catch {
+    /* try unscoped */
   }
-  if (soaLine) out.push(soaLine);
-  return out.join("\n");
-}
-
-function parseZone(text, origin) {
-  const records = [];
-  for (const raw of normalizeZoneText(text).split("\n")) {
-    const line = raw.trim();
-    if (!line || line.startsWith("$")) continue;
-    const parts = line.split(/\s+/).filter(Boolean);
-    if (parts.length < 3) continue;
-    let i = 0;
-    let name = "@";
-    if (parts[0] === "@") {
-      i = 1;
-    } else if (!/^\d+$/.test(parts[0]) && !/^IN$/i.test(parts[0])) {
-      name = parts[0].replace(/\.$/, "");
-      if (name === origin) name = "@";
-      else if (name.endsWith(`.${origin}`)) name = name.slice(0, -(origin.length + 1)) || "@";
-      i = 1;
-    }
-    if (/^\d+$/.test(parts[i])) i++;
-    if (/^IN$/i.test(parts[i])) i++;
-    const type = parts[i++]?.toUpperCase();
-    if (!type) continue;
-    let value = parts.slice(i).join(" ").replace(/\.$/, "");
-    if (type === "SOA") {
-      value = value
-        .replace(/^\(+/, "")
-        .replace(/\)+$/, "")
-        .replace(/\s+/g, " ")
-        .trim();
-    }
-    let priority;
-    if (type === "MX" || type === "SRV") {
-      const m = value.match(/^(\d+)\s+(.+)$/);
-      if (m) {
-        priority = m[1];
-        value = m[2];
-      }
-    }
-    records.push({ name, type, value, ttl: undefined, priority });
-  }
-  return records;
-}
-
-function formatRecordLine(_origin, rec) {
-  const name = rec.name === "@" ? "@" : rec.name;
-  const ttl = rec.ttl ? `${rec.ttl} ` : "";
-  const pri =
-    rec.priority && (rec.type === "MX" || rec.type === "SRV") ? `${rec.priority} ` : "";
-  return `${name} ${ttl}IN ${rec.type} ${pri}${rec.value}\n`;
-}
-
-export async function dnsGet(domain) {
-  await resolveDomainUser(domain);
-  const zonePath = await findZonePath(domain);
-  const text = await readFile(zonePath, "utf8");
-  const records = parseZone(text, domain);
-  emit({ ok: true, records, zonePath });
-}
-
-export async function dnsAdd(domain, record) {
-  await resolveDomainUser(domain);
-  const safe = validateDnsRecord(record);
-  const zonePath = await findZonePath(domain);
-  let text = await readFile(zonePath, "utf8");
-  text += formatRecordLine(domain, safe);
-  await writeFile(zonePath, text, "utf8");
   try {
     await exec("rndc", ["reload"], { timeout: 30_000 });
   } catch {
     await exec("systemctl", ["reload", "named"], { timeout: 30_000 }).catch(() => {});
   }
+}
+
+async function commitZone(zonePath, origin, nextText) {
+  const tmp = `${zonePath}.qadbak-tmp`;
+  await writeFile(tmp, nextText, "utf8");
+  try {
+    await exec("named-checkzone", [origin, tmp], { timeout: 15_000 });
+  } catch (e) {
+    await unlink(tmp).catch(() => {});
+    const code = e && typeof e === "object" && "code" in e ? e.code : "";
+    if (code === "ENOENT") {
+      fail(
+        `named-checkzone not installed — refusing to write ${origin} without a zone check`,
+      );
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    fail(`Zone check failed for ${origin}: ${msg.slice(0, 400)}`);
+  }
+  await rename(tmp, zonePath);
+  await reloadZone(origin);
+}
+
+export async function dnsGet(domain) {
+  await resolveDomainUser(domain);
+  const ctx = await dnsZoneContext(domain);
+  const zonePath = await findZonePath(ctx.origin);
+  const text = await readFile(zonePath, "utf8");
+  let records = parseZone(text, ctx.origin);
+  if (ctx.label) {
+    records = records.flatMap((r) => {
+      const name = mapNameFromParentZone(r.name, ctx.label);
+      return name == null ? [] : [{ ...r, name }];
+    });
+  }
+  emit({ ok: true, records, zonePath, origin: ctx.origin });
+}
+
+export async function dnsAdd(domain, record) {
+  await resolveDomainUser(domain);
+  const ctx = await dnsZoneContext(domain);
+  const safe = validateDnsRecord({
+    ...record,
+    name: mapNameToParentZone(record?.name, ctx.label),
+  });
+  const zonePath = await findZonePath(ctx.origin);
+  const text = await readFile(zonePath, "utf8");
+  await commitZone(zonePath, ctx.origin, upsertZoneText(text, safe, ctx.origin));
   emit({ ok: true, zonePath });
 }
 
 export async function dnsDel(domain, record) {
   await resolveDomainUser(domain);
-  const zonePath = await findZonePath(domain);
-  const lines = (await readFile(zonePath, "utf8")).split("\n");
-  const needle = `${record.type}`.toUpperCase();
-  const filtered = lines.filter((line) => {
-    const l = line.toUpperCase();
-    if (!l.includes(needle)) return true;
-    if (record.name !== "@" && !l.includes(record.name.toUpperCase())) return true;
-    if (!l.includes(String(record.value).toUpperCase())) return true;
-    return false;
-  });
-  await writeFile(zonePath, filtered.join("\n"), "utf8");
-  try {
-    await exec("rndc", ["reload"], { timeout: 30_000 });
-  } catch {
-    /* */
-  }
+  const ctx = await dnsZoneContext(domain);
+  const mapped = {
+    ...record,
+    name: mapNameToParentZone(record?.name, ctx.label),
+  };
+  const zonePath = await findZonePath(ctx.origin);
+  const text = await readFile(zonePath, "utf8");
+  await commitZone(zonePath, ctx.origin, deleteZoneText(text, mapped, ctx.origin));
   emit({ ok: true });
 }

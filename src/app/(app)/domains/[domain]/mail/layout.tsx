@@ -1,5 +1,5 @@
 import { MailSubNav } from "@/components/MailSubNav";
-import { requireDomainAccess } from "@/lib/domain-api";
+import { requireDomainPageNotAlias } from "@/lib/domain-api";
 
 type Props = {
   children: React.ReactNode;
@@ -7,7 +7,7 @@ type Props = {
 };
 
 export default async function MailSectionLayout({ children, params }: Props) {
-  const { domain, session } = await requireDomainAccess((await params).domain);
+  const { domain, session } = await requireDomainPageNotAlias((await params).domain);
   return (
     <div className="-mt-2 space-y-4">
       <MailSubNav domain={domain} isAdmin={session.role === "admin"} />

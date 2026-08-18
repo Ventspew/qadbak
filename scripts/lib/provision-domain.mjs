@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   emit,
@@ -14,8 +14,10 @@ import {
   nginxCustomerConfPaths,
 } from "./provisioning-common.mjs";
 import { ensureDomainMailSetup, ensureNativeMailStack } from "./mail-sync.mjs";
-import { ensureBindZone } from "./provision-dns.mjs";
+import { dnsAdd, ensureBindZone, locateZonePath } from "./provision-dns.mjs";
+import { parseZone } from "./dns-zone-edit.mjs";
 import { jstep, jinfo } from "./journal-emit.mjs";
+import { chpasswdSafe } from "./chpasswd-safe.mjs";
 
 const exec = promisify(execFile);
 
@@ -40,9 +42,7 @@ async function syncPhpFpmPool(user, domain) {
   const cfg = await readDomainConfigJson(domain, "php.json", {});
   const ver = cfg.defaultVersion || "8.2";
   const script = path.join(QADBAK_DIR, "scripts", "apply-php-fpm-pool.sh");
-  await exec("bash", [script, user, ver, `/home/${user}`], { timeout: 120_000 }).catch(
-    () => {},
-  );
+  await exec("bash", [script, user, ver, `/home/${user}`], { timeout: 120_000 });
 }
 
 async function reloadNginx(domain, user) {
@@ -115,6 +115,10 @@ export async function domainCreate(domain, pass, userOpt, extraJson) {
         command: `useradd -m -s /bin/bash ${user}`,
         durationMs: Date.now() - t0,
       });
+      if (pass) {
+        await chpasswdSafe(user, pass);
+        jstep("shell", `Set unix password for '${user}'`);
+      }
     } else {
       jinfo(`Unix user '${user}' already existed`);
     }
@@ -128,9 +132,11 @@ export async function domainCreate(domain, pass, userOpt, extraJson) {
       filePath: `${home}/.qadbak-domain`,
       byteSize: name.length + 1,
     });
-    await exec("chown", ["-R", `${user}:${user}`, home]);
-    jstep("shell", `Took ownership of ${home}`, {
-      command: `chown -R ${user}:${user} ${home}`,
+    await exec("chown", ["-R", `${user}:${user}`, path.join(home, "public_html")]);
+    await exec("chown", ["-R", `${user}:${user}`, path.join(home, "backups")]);
+    await exec("chown", [`${user}:${user}`, path.join(home, ".qadbak-domain")]).catch(() => {});
+    jstep("shell", `Took ownership of public_html and backups for ${user}`, {
+      command: `chown ${user}:${user} public_html backups`,
     });
     await writeLandingPage(home, user, name);
     jinfo(`Wrote Qadbak landing page in ${home}/public_html`);
@@ -168,11 +174,50 @@ export async function domainCreate(domain, pass, userOpt, extraJson) {
     filePath: `${QADBAK_DIR}/data/native-domains.json`,
   });
 
-  if (type !== "alias") {
-    await ensureBindZone(name);
-    jstep("service-reload", `Created BIND9 zone for ${name}`, {
-      filePath: `/etc/bind/zones/db.${name}`,
-    });
+  if (type === "top") {
+    try {
+      await ensureBindZone(name);
+      jstep("service-reload", `Created BIND9 zone for ${name}`, {
+        filePath: `/etc/bind/zones/db.${name}`,
+      });
+    } catch (e) {
+      jinfo(
+        `WARN: BIND zone for ${name}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  } else if (type === "sub" && parent) {
+    const label = name.endsWith(`.${parent}`)
+      ? name.slice(0, -(parent.length + 1))
+      : name.split(".")[0];
+    let originIp = process.env.QADBAK_ORIGIN_IP?.trim() || "";
+    if (!originIp) {
+      try {
+        const zonePath = await locateZonePath(parent);
+        if (zonePath) {
+          const recs = parseZone(await readFile(zonePath, "utf8"), parent);
+          const apex = recs.find(
+            (r) => r.name === "@" && String(r.type).toUpperCase() === "A",
+          );
+          originIp = String(apex?.value || "").trim();
+        }
+      } catch {
+        originIp = "";
+      }
+    }
+    if (originIp && label) {
+      try {
+        await dnsAdd(parent, { name: label, type: "A", value: originIp });
+        jstep("service-reload", `Added ${label} A on parent zone ${parent}`, {
+          filePath: `/etc/bind/zones/db.${parent}`,
+        });
+      } catch (e) {
+        jinfo(
+          `WARN: could not add ${label} A on ${parent}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    } else {
+      jinfo(`Skipped parent-zone A for ${name} (no origin IP)`);
+    }
   }
 
   if (ownedByQadbak && type !== "alias") {
@@ -288,8 +333,13 @@ export async function domainDelete(domain) {
 
   const { available, enabled } = nginxCustomerConfPaths(name);
   await exec("rm", ["-f", enabled, available]).catch(() => {});
-  const removePool = path.join(QADBAK_DIR, "scripts", "remove-php-fpm-pool.sh");
-  await exec("bash", [removePool, user], { timeout: 60_000 }).catch(() => {});
+  const othersShareUser = rows.some(
+    (r) => r.name !== name && String(r.user) === String(user),
+  );
+  if (!othersShareUser) {
+    const removePool = path.join(QADBAK_DIR, "scripts", "remove-php-fpm-pool.sh");
+    await exec("bash", [removePool, user], { timeout: 60_000 }).catch(() => {});
+  }
 
   const cfgDir = domainConfigDir(name);
   await rm(cfgDir, { recursive: true, force: true }).catch(() => {});

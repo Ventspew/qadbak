@@ -1,5 +1,5 @@
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { requireDomainApi } from "@/lib/domain-api";
+import { requireDomainApiNotAlias } from "@/lib/domain-api";
 import { isPremiumFeatureEnabled } from "@/lib/premium/server";
 import { assertActorDomainAccess } from "@/lib/rbac";
 import { nativeImapEnabled } from "@/lib/provisioner/native-features";
@@ -9,7 +9,7 @@ type Params = { params: Promise<{ domain: string; id: string }> };
 
 export async function GET(request: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "mail");
     if (!(await isPremiumFeatureEnabled("webmail-ui"))) {
       return jsonError("Qmail requires Premium (webmail-ui feature).", 402);
     }

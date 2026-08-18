@@ -1,12 +1,12 @@
 import { handleApiError, jsonOk } from "@/lib/api";
-import { requireDomainApi } from "@/lib/domain-api";
+import { requireDomainApiNotAlias } from "@/lib/domain-api";
 import { runProvisioningHelper } from "@/lib/provisioner/native-exec";
 
 type Params = { params: Promise<{ domain: string }> };
 
 export async function GET(_request: Request, { params }: Params) {
   try {
-    await requireDomainApi((await params).domain);
+    await requireDomainApiNotAlias((await params).domain, "mail");
     const raw = await runProvisioningHelper("mail-dns-hints", (await params).domain);
     const hints = (raw.hints ?? raw) as Record<string, unknown>;
     return jsonOk({ hints });

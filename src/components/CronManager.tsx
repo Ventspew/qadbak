@@ -31,7 +31,6 @@ export function CronManager({
   const [loading, setLoading] = useState(false);
   const [schedule, setSchedule] = useState("0 2 * * *");
   const [command, setCommand] = useState("");
-  const [user, setUser] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [confirmTyped, setConfirmTyped] = useState("");
 
@@ -58,7 +57,7 @@ export function CronManager({
       const res = await fetch(`/api/domains/${enc}/cron`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ schedule, command, user: user || undefined }),
+        body: JSON.stringify({ schedule, command }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Create failed.");
@@ -119,10 +118,6 @@ export function CronManager({
                 placeholder="0 2 * * *"
               />
             </div>
-            <div>
-              <Label>User (optional)</Label>
-              <Input value={user} onChange={(e) => setUser(e.target.value)} />
-            </div>
             <div className="sm:col-span-2">
               <Label>Command</Label>
               <Input
@@ -144,7 +139,6 @@ export function CronManager({
             <tr>
               <th className="px-6 py-3">Schedule</th>
               <th className="px-6 py-3">Command</th>
-              <th className="px-6 py-3">User</th>
               {canEdit && <th className="px-6 py-3 text-right">Actions</th>}
             </tr>
           </thead>
@@ -153,7 +147,6 @@ export function CronManager({
               <tr key={j.id} className="border-b border-panel-border/50">
                 <td className="px-6 py-4 font-mono text-xs text-white">{j.schedule}</td>
                 <td className="px-6 py-4 text-panel-muted">{j.command}</td>
-                <td className="px-6 py-4 text-panel-muted">{j.user ?? " - "}</td>
                 {canEdit && (
                   <td className="px-6 py-4 text-right">
                     <Button variant="danger" onClick={() => setDeleteId(j.id)}>

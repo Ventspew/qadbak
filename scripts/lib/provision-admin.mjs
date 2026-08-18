@@ -8,6 +8,7 @@ import {
   fail,
   QADBAK_DIR,
   loadRegistry,
+  writeJsonFileAtomic,
 } from "./provisioning-common.mjs";
 import { assertAdminReadablePath } from "./validate-admin-path.mjs";
 
@@ -72,8 +73,7 @@ async function loadUsers() {
 }
 
 async function saveUsers(users) {
-  await mkdir(path.dirname(USERS_PATH), { recursive: true });
-  await writeFile(USERS_PATH, `${JSON.stringify(users, null, 2)}\n`, "utf8");
+  await writeJsonFileAtomic(USERS_PATH, users);
 }
 
 export async function adminLicenseGet() {

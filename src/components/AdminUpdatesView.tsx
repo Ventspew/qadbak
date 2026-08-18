@@ -102,8 +102,14 @@ export function AdminUpdatesView() {
             ? `/api/admin/updates/ubuntu-release?jobId=${encodeURIComponent(jobId)}`
             : `/api/admin/updates/qadbak?jobId=${encodeURIComponent(jobId)}`;
       const res = await fetch(url);
-      const data = await res.json();
-      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(String((data as { error?: string }).error ?? "Could not read update job."));
+        if (kind === "linux") setLinuxJobId(null);
+        else if (kind === "ubuntu") setUbuntuJobId(null);
+        else setQadbakJobId(null);
+        return;
+      }
       if (kind === "linux") {
         setLinuxLog(data.log ?? "");
         if (data.job?.status !== "running") {
@@ -151,8 +157,6 @@ export function AdminUpdatesView() {
     action: "refresh" | "upgrade",
     extra?: { targetVersion?: string },
   ) {
-    const key = `${path}-${action}`;
-    setActing(key);
     setError("");
     try {
       const res = await fetch(path, {
@@ -212,6 +216,8 @@ export function AdminUpdatesView() {
     action: "refresh" | "upgrade",
     extra?: { targetVersion?: string },
   ) {
+    const actingKey = `${endpoint}-${action}`;
+    setActing(actingKey);
     const path =
       endpoint === "ubuntu"
         ? "/api/admin/updates/ubuntu-release"

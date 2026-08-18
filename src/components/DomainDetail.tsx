@@ -107,10 +107,16 @@ export function DomainDetail({
       <div>
         <h2 className="text-lg font-medium text-white">Quick links</h2>
         <p className="mt-1 text-sm text-panel-muted">
-          Email, DNS, SSL, backups, and more - all in Qadbak.
+          {domain.type === "alias"
+            ? "Files, PHP, and website settings — mail and DNS live on the parent domain."
+            : "Email, DNS, SSL, backups, and more - all in Qadbak."}
         </p>
         <div className="mt-4">
-          <DomainQuickLinks domain={domain.name} isAdmin={isAdmin} />
+          <DomainQuickLinks
+            domain={domain.name}
+            isAdmin={isAdmin}
+            type={domain.type}
+          />
         </div>
       </div>
     </div>

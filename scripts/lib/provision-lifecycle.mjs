@@ -13,6 +13,7 @@ import {
   domainConfigDir,
   QADBAK_DIR,
   nginxCustomerConfPaths,
+  writeJsonFileAtomic,
 } from "./provisioning-common.mjs";
 
 const exec = promisify(execFile);
@@ -24,6 +25,17 @@ async function setRegistryDisabled(domain, disabled) {
   if (idx < 0) return;
   rows[idx].disabled = disabled;
   await saveRegistry(rows);
+}
+
+async function otherEnabledDomainsShareUser(domain, user) {
+  const d = String(domain).toLowerCase();
+  const rows = await loadRegistry();
+  return rows.some(
+    (r) =>
+      String(r.user) === user &&
+      String(r.name).toLowerCase() !== d &&
+      r.disabled !== true,
+  );
 }
 
 export async function domainEnable(domain) {
@@ -43,7 +55,11 @@ export async function domainEnable(domain) {
 
 export async function domainDisable(domain) {
   const { user } = await resolveDomainUser(domain);
-  await exec("usermod", ["-L", user], { timeout: 15_000 }).catch(() => {});
+  // Shared unix users (parent + subs) must stay unlocked so mail/SSH/FTP
+  // on the other sites keep working. Only lock when this is the last enabled domain.
+  if (!(await otherEnabledDomainsShareUser(domain, user))) {
+    await exec("usermod", ["-L", user], { timeout: 15_000 }).catch(() => {});
+  }
   const { enabled } = nginxCustomerConfPaths(domain);
   await exec("rm", ["-f", enabled], { timeout: 10_000 }).catch(() => {});
   try {
@@ -169,7 +185,7 @@ export async function domainTransfer(domain, newOwner) {
   }
 
   const usersPath = path.join(QADBAK_DIR, "data", "users.json");
-  const { readFile, writeFile } = await import("node:fs/promises");
+  const { readFile } = await import("node:fs/promises");
   let users;
   try {
     users = JSON.parse(await readFile(usersPath, "utf8"));
@@ -191,7 +207,7 @@ export async function domainTransfer(domain, newOwner) {
   if (!target.domains.some((x) => String(x).toLowerCase() === d)) {
     target.domains.push(d);
   }
-  await writeFile(usersPath, `${JSON.stringify(users, null, 2)}\n`, "utf8");
+  await writeJsonFileAtomic(usersPath, users);
   emit({
     ok: true,
     domain: d,

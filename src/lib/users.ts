@@ -1,7 +1,8 @@
 import bcrypt from "bcryptjs";
-import { chmod, copyFile, mkdir, readFile, stat, writeFile } from "fs/promises";
+import { copyFile, mkdir, readFile, stat } from "fs/promises";
 import path from "path";
 import type { PanelUser } from "./types";
+import { writeJsonAtomic } from "./write-json-atomic";
 
 const USERS_PATH = path.join(process.cwd(), "data", "users.json");
 const EXAMPLE_PATH = path.join(process.cwd(), "data", "users.example.json");
@@ -40,7 +41,7 @@ async function ensureUsersFile(): Promise<void> {
         domains: ["example.com"],
       },
     ];
-    await writeFile(USERS_PATH, JSON.stringify(seed, null, 2), "utf8");
+    await writeJsonAtomic(USERS_PATH, seed, USERS_MODE);
   }
 }
 
@@ -51,8 +52,7 @@ export function invalidateUsersCache(): void {
 
 export async function saveUsers(users: PanelUser[]): Promise<void> {
   await ensureUsersFile();
-  await writeFile(USERS_PATH, JSON.stringify(users, null, 2), "utf8");
-  await chmod(USERS_PATH, USERS_MODE).catch(() => undefined);
+  await writeJsonAtomic(USERS_PATH, users, USERS_MODE);
   invalidateUsersCache();
 }
 

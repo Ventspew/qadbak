@@ -84,6 +84,12 @@ function getSecret(): Uint8Array | null {
   return new TextEncoder().encode(secret);
 }
 
+function passPathname(request: NextRequest): NextResponse {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-qadbak-pathname", request.nextUrl.pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
 function finish(request: NextRequest, response: NextResponse): NextResponse {
   const tag = installFingerprintTag();
   if (tag) response.headers.set("X-QB-Tag", tag);
@@ -121,11 +127,11 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isPublicPath(pathname)) {
-    return finish(request, NextResponse.next());
+    return finish(request, passPathname(request));
   }
 
   if (isApiV1Path(pathname)) {
-    return finish(request, NextResponse.next());
+    return finish(request, passPathname(request));
   }
 
   let token = sessionTokenFromRequest(request);
@@ -187,7 +193,7 @@ export async function middleware(request: NextRequest) {
         return clientForbiddenResponse(request, pathname);
       }
     }
-    return finish(request, NextResponse.next());
+    return finish(request, passPathname(request));
   } catch {
     if (pathname.startsWith("/api/")) {
       return finish(

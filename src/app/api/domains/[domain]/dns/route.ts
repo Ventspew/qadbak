@@ -1,6 +1,6 @@
 import { auditLog } from "@/lib/audit";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
-import { requireDomainApi } from "@/lib/domain-api";
+import { requireDomainApiNotAlias } from "@/lib/domain-api";
 import { beginJournal } from "@/lib/journal";
 import { getProvisioner } from "@/lib/provisioner";
 import {
@@ -13,7 +13,7 @@ type Params = { params: Promise<{ domain: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "DNS");
     const result = await getProvisioner().getDns(domain, session);
     return jsonOk(result);
   } catch (err) {
@@ -25,7 +25,7 @@ export async function POST(request: Request, { params }: Params) {
   return runWithJournalStore(async () => {
     let journal: ReturnType<typeof beginJournal> | undefined;
     try {
-      const { session, domain } = await requireDomainApi((await params).domain);
+      const { session, domain } = await requireDomainApiNotAlias((await params).domain, "DNS");
       const body = (await request.json()) as {
         name?: string;
         type?: string;
@@ -82,7 +82,7 @@ export async function DELETE(request: Request, { params }: Params) {
   return runWithJournalStore(async () => {
     let journal: ReturnType<typeof beginJournal> | undefined;
     try {
-      const { session, domain } = await requireDomainApi((await params).domain);
+      const { session, domain } = await requireDomainApiNotAlias((await params).domain, "DNS");
       const body = (await request.json()) as DnsRecord;
       if (!body.name || !body.type || !body.value) {
         return jsonError("Name, type, and value are required to delete a record.");

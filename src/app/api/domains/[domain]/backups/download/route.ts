@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
 import { auditLog } from "@/lib/audit";
 import { handleApiError, jsonError } from "@/lib/api";
-import { requireDomainApi } from "@/lib/domain-api";
+import { requireDomainApiNotAlias } from "@/lib/domain-api";
 import { BACKUP_DOWNLOAD_WRAPPER, runProvisioningHelper } from "@/lib/provisioner/native-exec";
 import { nativeFeatureEnabled } from "@/lib/provisioner/native-features";
 import { isIndependentMode } from "@/lib/provisioner/native-stub";
@@ -18,7 +18,7 @@ function nativeBackups(): boolean {
 
 export async function GET(request: Request, { params }: Params) {
   try {
-    const { session, domain } = await requireDomainApi((await params).domain);
+    const { session, domain } = await requireDomainApiNotAlias((await params).domain, "backups");
     if (!nativeBackups()) {
       return jsonError("Backup download requires native backup mode.", 501);
     }

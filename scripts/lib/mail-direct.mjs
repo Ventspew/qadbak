@@ -2,7 +2,9 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import { access } from "node:fs/promises";
-import { emit, fail, resolveDomainUser } from "./provisioning-common.mjs";
+import { emit, fail, resolveDomainUser, assertNotAliasDomain } from "./provisioning-common.mjs";
+import { assertCountCap } from "./domain-limits-cap.mjs";
+import { RESERVED_MAILBOX_LOCALS } from "./mail-reserved.mjs";
 import { chpasswdSafe } from "./chpasswd-safe.mjs";
 import {
   discoverMailLayout,
@@ -38,6 +40,7 @@ async function unixUserExists(name) {
 }
 
 export async function mailListDirect(domain) {
+  await assertNotAliasDomain(domain, "mail");
   const layout = await layoutForDomain(domain);
   let mailboxes = await listMailboxesFromLayout(layout);
   mailboxes = await enrichMailboxesWithUsage(layout, mailboxes, domain);
@@ -45,11 +48,19 @@ export async function mailListDirect(domain) {
 }
 
 export async function mailCreateDirect(domain, localUser, pass, real) {
+  await assertNotAliasDomain(domain, "mail");
   await ensureNativeMailStack();
   const { user: owner, home } = await resolveDomainUser(domain);
   const layout = await discoverMailLayout(domain, owner, home);
   const local = String(localUser || "").trim().toLowerCase();
   if (!local || local.includes("@")) fail("Invalid mailbox user name");
+  if (RESERVED_MAILBOX_LOCALS.has(local)) {
+    fail(
+      `Mailbox name "${local}" is reserved (it collides with a panel mail page).`,
+    );
+  }
+  const existing = await listMailboxesFromLayout(layout);
+  await assertCountCap(domain, "mailboxes", existing.length);
 
   const email = `${local}@${domain}`;
   const isOwner = local === owner;
