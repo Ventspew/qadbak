@@ -111,7 +111,9 @@ export function TelegramBotManager({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed");
       apply(data as Payload);
-      setSuccess("Tasks saved. The bot picks them up on the next message — no restart needed.");
+      setSuccess(
+        "Tasks saved. Commands and replies update on the next message; the Telegram menu refreshes within a few seconds.",
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -193,11 +195,39 @@ export function TelegramBotManager({
       )}
 
       {payload.installed && (
+        <Card className="space-y-2">
+          <h2 className="text-lg font-medium text-white">Talk to this bot</h2>
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-panel-muted">
+            <li>
+              Open Telegram, search{" "}
+              {payload.botUsername ? (
+                <code>@{payload.botUsername.replace(/^@/, "")}</code>
+              ) : (
+                "the username you gave BotFather"
+              )}
+              , send <code>/start</code>.
+            </li>
+            <li>
+              Add it to your group
+              {payload.inviteUrl ? " with the invite link above" : ""} and grant Send
+              messages. In a group type <code>/status@botname</code>.
+            </li>
+            <li>
+              Optional: BotFather → /setprivacy → Disable if you want keyword replies in
+              the group (then remove and re-add the bot).
+            </li>
+          </ol>
+        </Card>
+      )}
+
+      {payload.installed && (
         <Card className="space-y-4">
           <h2 className="text-lg font-medium text-white">No-code tasks</h2>
           <p className="text-sm text-panel-muted">
             Assign what this Telegram bot does for this domain. Saves go to this install only
-            — not Discord, and not other customers.
+            — not Discord, and not other customers. In a group, Telegram privacy mode only
+            delivers <code>/command@botname</code> unless you disable privacy in BotFather.
+            Keyword replies work in a private chat without that change.
           </p>
           <div>
             <Label>Bot display name</Label>

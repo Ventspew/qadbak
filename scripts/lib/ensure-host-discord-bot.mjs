@@ -73,6 +73,7 @@ function buildCompose({
       BOT_NAME: ${yamlQuote(botName)}
       QADBAK_HOST_GATEWAY: "1"
       QADBAK_GATEWAY: "1"
+      DISCORD_MESSAGE_CONTENT: "1"
       DISCORD_BOT_TOKEN: ${yamlQuote(token)}
       DISCORD_CLIENT_ID: ${yamlQuote(clientId)}
       DISCORD_CLIENT_SECRET: ${yamlQuote(clientSecret)}

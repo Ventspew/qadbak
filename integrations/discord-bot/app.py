@@ -97,6 +97,28 @@ def alerts_enabled() -> bool:
     return True
 
 
+def host_gateway() -> bool:
+    return os.environ.get("QADBAK_HOST_GATEWAY", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def wants_server_members() -> bool:
+    env = os.environ.get("DISCORD_SERVER_MEMBERS", "").strip().lower()
+    if env in ("1", "true", "yes"):
+        return True
+    if env in ("0", "false", "no"):
+        return False
+    for row in load_tasks().get("tasks") or []:
+        if not isinstance(row, dict) or row.get("enabled") is False:
+            continue
+        if str(row.get("type") or "") in ("welcome", "auto.role"):
+            return True
+    return False
+
+
 def sign(value: str) -> str:
     sig = hmac.new(SESSION_SECRET, value.encode(), hashlib.sha256).hexdigest()
     return f"{value}.{sig}"
@@ -762,7 +784,7 @@ def parse_prefix_command(content: str, bot_user_id: int | None) -> tuple[str, st
     return "", ""
 
 
-def start_bot(*, message_content: bool | None = None) -> None:
+def start_bot(*, message_content: bool | None = None, members: bool | None = None) -> None:
     if not BOT_TOKEN:
         print("discord gateway off (no bot token)", flush=True)
         return
@@ -786,8 +808,11 @@ def start_bot(*, message_content: bool | None = None) -> None:
             "true",
             "yes",
         )
+    if members is None:
+        members = wants_server_members()
     intents = discord.Intents.default()
     intents.message_content = message_content
+    intents.members = members
     bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
     async def command_result(name: str, extra: str = "") -> dict | None:
@@ -1173,7 +1198,10 @@ def start_bot(*, message_content: bool | None = None) -> None:
         msgs: list[str] = []
         posted_any = False
         digest_due = False
-        if alerts_enabled():
+        # Host operator alerts already run from qadbak-discord-notify.
+        # Keep scheduled posts on this gateway; skip digest/channel spam.
+        run_alerts = alerts_enabled() and not host_gateway()
+        if run_alerts:
             last = float(state.get("digestAt") or 0)
             if not last or now - last >= DIGEST_SEC:
                 digest_due = True
@@ -1190,7 +1218,7 @@ def start_bot(*, message_content: bool | None = None) -> None:
                 if await post_update(embed=hello):
                     state["helloSent"] = True
                     posted_any = True
-        if digest_due and alerts_enabled():
+        if digest_due and run_alerts:
             if await post_update(embed=status_embed(snap, title="Host digest")):
                 posted_any = True
                 state["digestAt"] = now
@@ -1225,12 +1253,7 @@ def start_bot(*, message_content: bool | None = None) -> None:
         await rebuild_tree()
         if not reload_tasks.is_running():
             reload_tasks.start()
-        host_gw = os.environ.get("QADBAK_HOST_GATEWAY", "").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-        )
-        if not host_gw and not host_watch.is_running():
+        if not host_watch.is_running():
             host_watch.start()
         print(
             f"discord commands: type !ping in a DM, or /ping in a server (guilds={len(bot.guilds)})",
@@ -1240,26 +1263,38 @@ def start_bot(*, message_content: bool | None = None) -> None:
             print("WARN: bot is in 0 Discord servers — Invite from Server → Discord", flush=True)
 
     try:
-        print(f"discord gateway starting message_content={message_content}", flush=True)
-        bot.run(BOT_TOKEN)
-    except discord.PrivilegedIntentsRequired:
         print(
-            "WARN Message Content Intent is off in Discord Developer Portal. "
-            "Retrying without it so alerts keep working. "
-            "Enable Message Content Intent for !status in a server channel "
-            "(DMs and @mentions already work).",
+            f"discord gateway starting message_content={message_content} members={members}",
             flush=True,
         )
-        if message_content:
-            start_bot(message_content=False)
-    except Exception as e:
-        err = str(e).lower()
-        if message_content and "privileged" in err:
+        bot.run(BOT_TOKEN)
+    except discord.PrivilegedIntentsRequired:
+        if members:
             print(
-                f"WARN gateway intents: {e} — retrying without Message Content",
+                "WARN Server Members Intent is off in Discord Developer Portal. "
+                "Retrying without it so commands stay online. Enable it for welcome/auto-role.",
                 flush=True,
             )
-            start_bot(message_content=False)
+            start_bot(message_content=message_content, members=False)
+        elif message_content:
+            print(
+                "WARN Message Content Intent is off in Discord Developer Portal. "
+                "Retrying without it so alerts keep working. "
+                "Enable Message Content Intent for !status in a server channel "
+                "(DMs and @mentions already work).",
+                flush=True,
+            )
+            start_bot(message_content=False, members=False)
+        else:
+            print("WARN gateway PrivilegedIntentsRequired", flush=True)
+    except Exception as e:
+        err = str(e).lower()
+        if "privileged" in err and (members or message_content):
+            print(f"WARN gateway intents: {e}", flush=True)
+            if members:
+                start_bot(message_content=message_content, members=False)
+            else:
+                start_bot(message_content=False, members=False)
         else:
             print(f"WARN gateway: {e}", flush=True)
 

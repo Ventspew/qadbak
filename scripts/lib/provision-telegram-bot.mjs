@@ -555,6 +555,7 @@ export async function telegramBotInstall(domain, payloadJson) {
       `Edit commands later in the panel: Domains → ${parent} → Telegram.`,
       "Every customer creates their own bot in BotFather — do not reuse another domain's token.",
       "In a group, grant the bot permission to send messages. Then send /start.",
+      "Telegram privacy mode: groups only see /command@botname unless you disable privacy in BotFather.",
     ],
   };
   emit(result);

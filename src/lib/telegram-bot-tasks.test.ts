@@ -35,6 +35,18 @@ describe("telegram bot recipes", () => {
     expect(cmds.some((c) => c.command === "helloworld")).toBe(true);
   });
 
+  it("omits disabled commands from the BotFather menu", () => {
+    const recipes = normalizeTelegramBotRecipes({
+      tasks: [
+        { id: "ping", enabled: false, type: "qadbak.ping", params: { name: "ping" } },
+        { id: "status", enabled: true, type: "qadbak.status", params: { name: "status" } },
+      ],
+    });
+    const cmds = telegramCommandsFromTasks(recipes);
+    expect(cmds.some((c) => c.command === "ping")).toBe(false);
+    expect(cmds.some((c) => c.command === "status")).toBe(true);
+  });
+
   it("builds a group invite without a token", () => {
     const url = telegramBotInviteUrl("@My_ShopBot");
     expect(url).toBe("https://t.me/My_ShopBot?startgroup=1");

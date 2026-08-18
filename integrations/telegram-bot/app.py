@@ -113,22 +113,30 @@ def telegram_command_menu() -> list[dict]:
     out = [{"command": "start", "description": "Link this chat"}]
     used = {"start"}
     mapping = [
-        ("help", "What this bot can do"),
-        ("settings", "Privacy and group tips"),
-        ("status", "RAM, disk, load, Docker"),
-        ("disk", "Disk usage"),
-        ("docker", "Docker containers"),
-        ("load", "CPU load"),
-        ("ping", "Check the bot is online"),
-        ("uptime", "Bot uptime"),
-        ("about", "About this bot"),
-        ("minecraft", "Minecraft status"),
+        ("qadbak.status", "status", "RAM, disk, load, Docker"),
+        ("qadbak.help", "help", "What this bot can do"),
+        ("qadbak.settings", "settings", "Privacy and group tips"),
+        ("qadbak.disk", "disk", "Disk usage"),
+        ("qadbak.docker", "docker", "Docker containers"),
+        ("qadbak.load", "load", "CPU load"),
+        ("qadbak.ping", "ping", "Check the bot is online"),
+        ("qadbak.uptime", "uptime", "Bot uptime"),
+        ("qadbak.about", "about", "About this bot"),
+        ("minecraft.status", "minecraft", "Minecraft status"),
     ]
-    for command, description in mapping:
-        if command in used:
+    for kind, fallback, description in mapping:
+        for row in enabled_tasks(kind):
+            name = command_name(row.get("params"), fallback)
+            if name and name not in used:
+                used.add(name)
+                out.append({"command": name, "description": description[:256]})
+    for row in enabled_tasks("command.reply"):
+        name = command_name(row.get("params"), "")
+        if not name or name in used:
             continue
-        used.add(command)
-        out.append({"command": command, "description": description[:256]})
+        used.add(name)
+        text = str((row.get("params") or {}).get("text") or name)[:256]
+        out.append({"command": name, "description": text})
     return out[:100]
 
 
@@ -322,8 +330,27 @@ def start_bot() -> None:
                 print(f"WARN setMyCommands: {e}", flush=True)
         except Exception as e:
             print(f"WARN telegram getMe: {e}", flush=True)
+        last_menu = {"mtime": 0.0}
+
+        async def refresh_command_menu(context: ContextTypes.DEFAULT_TYPE) -> None:
+            try:
+                mtime = TASKS_PATH.stat().st_mtime
+            except OSError:
+                mtime = 0.0
+            if mtime == last_menu["mtime"]:
+                return
+            last_menu["mtime"] = mtime
+            try:
+                await context.bot.set_my_commands(
+                    [BotCommand(c["command"], c["description"]) for c in telegram_command_menu()]
+                )
+                print("telegram command menu refreshed from tasks", flush=True)
+            except Exception as e:
+                print(f"WARN setMyCommands: {e}", flush=True)
+
         if application.job_queue:
             application.job_queue.run_repeating(host_watch, interval=45, first=15)
+            application.job_queue.run_repeating(refresh_command_menu, interval=20, first=8)
         else:
             print("WARN telegram job_queue unavailable — host alerts disabled", flush=True)
 

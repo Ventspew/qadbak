@@ -164,7 +164,7 @@ export const telegramBotTemplate: AppTemplate = {
       credentials,
       postInstall:
         result.postInstall?.join(" ") ??
-        "Create the bot in BotFather, paste that token, then add the bot to your Telegram group. Edit commands later under this domain → Telegram.",
+        "Open a private chat, send /start. In a group use /status@botname (privacy mode). Edit commands under this domain → Telegram.",
     };
   },
 };

@@ -48,12 +48,20 @@ export type QadbakUpdateStatus = {
   isGit: boolean;
   commit?: string;
   branch?: string;
+  trackingBranch?: string;
   remoteUrl?: string;
   behind?: number;
+  diverged?: boolean;
   upToDate?: boolean;
   checkedAt?: string;
   message?: string;
   error?: string;
+  version?: string;
+  originVersion?: string;
+  changelogVersion?: string;
+  changelogDate?: string;
+  changelog?: string;
+  releasesUrl?: string;
 };
 
 export type UpdateJobMeta = {

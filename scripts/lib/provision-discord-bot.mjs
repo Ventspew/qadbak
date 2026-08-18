@@ -448,31 +448,7 @@ export async function discordBotStatus(domain) {
 }
 
 export async function discordBotSyncTasks() {
-  const recipesPath = path.join(QADBAK_DIR, "data", "discord-bot.json");
-  let body;
-  try {
-    body = `${JSON.stringify(JSON.parse(await readFile(recipesPath, "utf8")), null, 2)}\n`;
-  } catch {
-    fail("No discord-bot.json recipes yet.");
-  }
-  const host = await loadPanelDiscordNotify();
-  const dir = path.join(QADBAK_DIR, "data", "domain-config");
-  let domains = [];
-  try {
-    domains = await readdir(dir);
-  } catch {
-    emit({ ok: true, synced: 0 });
-    return;
-  }
-  let synced = 0;
-  for (const name of domains) {
-    const cfg = await readDomainConfigJson(name, "discord-bot.json", null);
-    if (!cfg?.dataDir) continue;
-    const clientId = String(cfg.discordClientId || "").trim();
-    if (!host.clientId || clientId !== host.clientId) continue;
-    await mkdir(cfg.dataDir, { recursive: true });
-    await writeFile(path.join(cfg.dataDir, "tasks.json"), body, "utf8");
-    synced += 1;
-  }
-  emit({ ok: true, synced });
+  // Host recipes stay on the operator gateway (bind-mounted discord-bot.json).
+  // Customer installs never inherit the panel bot's tasks or token.
+  emit({ ok: true, synced: 0 });
 }

@@ -18,10 +18,11 @@ Shipped on `main` for native VPS installs. Phases 1–8 have checklists in `docs
 
 The phase roadmap is **not** shown in the customer-facing panel (internal/docs and `scripts/run-market-phases-check.sh` only).
 
-## Since v1.0 / v1.1
+## Since v1.0
 
 | Release | Highlights |
 |---------|------------|
+| **v1.2.0** | Discord + Telegram bots (per-domain + host operator), isolation, Admin Updates shows version/changelog |
 | **v1.1.0** | Ubuntu LTS release upgrade from Admin → Updates (Premium) |
 | **v1.0.0** | Debian 12, Ubuntu 26.04, panel-only Linux install |
 | **v1.0.0** | Jellyfin app, domain media library, HTML5 quick player |

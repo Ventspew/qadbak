@@ -142,6 +142,20 @@ export function AdminDiscordPage() {
     else if (q === "error") setError("Discord login failed or expired. Try Link my Discord again.");
   }, []);
 
+  useEffect(() => {
+    if (!settings?.botTokenSet) return;
+    if (bot?.ok && bot.guilds.length > 0) return;
+    const t = window.setInterval(() => {
+      void fetch("/api/admin/discord")
+        .then((r) => r.json())
+        .then((data: { bot?: BotPresence }) => {
+          if (data.bot) setBot(data.bot);
+        })
+        .catch(() => {});
+    }, 8000);
+    return () => window.clearInterval(t);
+  }, [settings?.botTokenSet, bot?.ok, bot?.guilds.length]);
+
   async function saveCredentials() {
     setSaving(true);
     setError("");
@@ -190,9 +204,7 @@ export function AdminDiscordPage() {
       if (!res.ok) throw new Error(data.error ?? "Save failed");
       applyPayload(data);
       setSuccess(
-        data.synced
-          ? `Tasks saved and copied to ${data.synced} hosted bot(s).`
-          : "Tasks saved. Install the Discord Bot app so !status and other commands stay online.",
+        "Tasks saved. The host bot reloads them automatically. Customer Discord bots keep their own tasks.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
@@ -330,14 +342,40 @@ export function AdminDiscordPage() {
 
       <Card className="space-y-3">
         <h2 className="text-lg font-medium text-white">
-          {hasToken ? "Invite the bot" : "Create a Discord application (once)"}
+          {hasToken ? "Get replies in your Discord" : "Create a Discord application (once)"}
         </h2>
         {hasToken && settings.inviteUrl ? (
           <>
             <p className="text-sm text-panel-muted">
-              Token is already saved. Click Invite now to add the bot to your Discord
-              server — no extra Developer Portal work.
+              This is <strong className="text-white">your</strong> host bot — invite it to
+              the Discord server you use. Slash commands like <code>/ping</code> work as
+              soon as the bot is in the server. Prefix commands like{" "}
+              <code>!status</code> in a channel need Message Content Intent.
             </p>
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-panel-muted">
+              <li>
+                Click Invite now
+                {bot?.ok && bot.guilds.length === 0
+                  ? " — the bot is in 0 servers until you do"
+                  : bot?.ok && bot.guilds.length > 0
+                    ? ` — already in ${bot.guilds.map((g) => g.name).join(", ")}`
+                    : ""}
+                .
+              </li>
+              <li>
+                Developer Portal → Bot → Privileged Gateway Intents → enable{" "}
+                <strong className="text-white">Message Content Intent</strong> for{" "}
+                <code>!status</code> in a channel.
+              </li>
+              <li>
+                Enable <strong className="text-white">Server Members Intent</strong> only
+                if you use welcome or auto-role.
+              </li>
+              <li>
+                DM the bot <code>!ping</code>, then in the server try{" "}
+                <code>/ping</code>.
+              </li>
+            </ol>
             <div className="flex flex-wrap gap-2">
               <Input readOnly value={settings.inviteUrl} className="flex-1 min-w-[16rem]" />
               <Button type="button" variant="secondary" onClick={() => void copyText(settings.inviteUrl, "Invite URL")}>
@@ -370,9 +408,10 @@ export function AdminDiscordPage() {
             <li>Bot → Add Bot → copy the token. OAuth2 → copy client ID and client secret.</li>
             <li>Paste them below, Save, then use Invite now.</li>
             <li>
-              Enable <strong className="text-white">Message Content</strong> and{" "}
-              <strong className="text-white">Server Members</strong> intents for keyword
-              replies and welcomes.
+              Enable <strong className="text-white">Message Content</strong> for{" "}
+              <code>!status</code> in a channel. Enable{" "}
+              <strong className="text-white">Server Members</strong> only for welcomes
+              and auto-role.
             </li>
           </ol>
         )}
@@ -502,10 +541,12 @@ export function AdminDiscordPage() {
       <Card className="space-y-4">
         <h2 className="text-lg font-medium text-white">No-code tasks</h2>
         <p className="text-sm text-panel-muted">
-          Assign what the bot does — no code editor. Host alerts run from the panel
-          daemon. Prefix commands (<code>!status</code>) and keyword/welcome need the
-          Discord Bot app so the bot stays online. Enable Message Content Intent
-          in the Developer Portal for <code>!status</code> in a server channel.
+          Assign what <strong className="text-white">this host bot</strong> does — no
+          code editor. Channel alerts still run from the panel daemon. Commands
+          (<code>!status</code>, <code>/ping</code>) need the host gateway container,
+          which starts when you save credentials. Enable Message Content Intent in
+          the Developer Portal for <code>!status</code> in a server channel. DMs and
+          slash commands work without that intent.
         </p>
         <div>
           <Label>Bot display name</Label>

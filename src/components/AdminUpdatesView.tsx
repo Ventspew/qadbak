@@ -443,19 +443,43 @@ export function AdminUpdatesView() {
             >
               {acting === "qadbak-upgrade" || qadbakJobId
                 ? "Updating…"
-                : "Update Qadbak"}
+                : qadbak?.originVersion &&
+                    qadbak.originVersion !== qadbak.version
+                  ? `Update to v${qadbak.originVersion}`
+                  : qadbak?.behind && qadbak.behind > 0
+                    ? "Pull latest commits"
+                    : "Update Qadbak"}
             </Button>
           </div>
         </div>
         <p className="mt-1 text-sm text-panel-muted">
-          Uses git fetch and scripts/update-qadbak.sh. Backs up users.json and
-          native-domains.json before starting.
+          Pulls from git origin, then runs scripts/update-qadbak.sh (npm build,
+          pm2 restart). Backs up users.json and native-domains.json first. After
+          the update this page shows the new version and changelog.
         </p>
         {backupNote && (
           <p className="mt-2 text-sm text-emerald-400">{backupNote}</p>
         )}
         {qadbak && (
           <ul className="mt-4 space-y-2 text-sm">
+            {(qadbak.version || qadbak.originVersion) && (
+              <li>
+                <span className="text-panel-muted">Installed: </span>
+                <span className="text-white">
+                  {qadbak.version ? `v${qadbak.version}` : "unknown"}
+                </span>
+                {qadbak.originVersion &&
+                  qadbak.originVersion !== qadbak.version && (
+                    <span className="text-amber-400">
+                      {" "}
+                      · origin has v{qadbak.originVersion}
+                    </span>
+                  )}
+                {qadbak.upToDate && qadbak.version && (
+                  <span className="text-emerald-400"> · up to date</span>
+                )}
+              </li>
+            )}
             {!qadbak.isGit && (
               <li className="text-panel-muted">{qadbak.message ?? "Not a git repo."}</li>
             )}
@@ -475,16 +499,48 @@ export function AdminUpdatesView() {
                     {qadbak.behind === -1
                       ? "Could not fetch"
                       : qadbak.behind === 0
-                        ? "Up to date"
+                        ? qadbak.diverged
+                          ? "Diverged (local commits not on origin)"
+                          : "Up to date"
                         : `${qadbak.behind} commit(s)`}
                   </span>
                 </li>
+                {qadbak.releasesUrl && (
+                  <li>
+                    <a
+                      href={qadbak.releasesUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-panel-accent hover:underline"
+                    >
+                      GitHub releases
+                    </a>
+                  </li>
+                )}
                 <li className="text-panel-muted">
                   Checked: {formatTime(qadbak.checkedAt)}
                 </li>
               </>
             )}
           </ul>
+        )}
+        {qadbak?.changelog && (
+          <div className="mt-4 rounded-lg border border-panel-border bg-panel-bg p-3">
+            <p className="text-sm font-medium text-white">
+              {qadbak.changelogVersion
+                ? `v${qadbak.changelogVersion}`
+                : "Latest notes"}
+              {qadbak.changelogDate ? ` · ${qadbak.changelogDate}` : ""}
+              {qadbak.originVersion &&
+              qadbak.version &&
+              qadbak.originVersion !== qadbak.version
+                ? " on origin — Update Qadbak to install"
+                : ""}
+            </p>
+            <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-panel-muted">
+              {qadbak.changelog}
+            </pre>
+          </div>
         )}
         {qadbakLog && (
           <pre className="mt-4 max-h-64 overflow-auto rounded-lg border border-panel-border bg-panel-bg p-3 text-xs text-panel-muted">

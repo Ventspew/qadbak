@@ -34,6 +34,53 @@ async function exists(p) {
   }
 }
 
+function githubReleasesUrl(remoteUrl) {
+  const s = String(remoteUrl || "").trim();
+  const m = s.match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/i);
+  if (!m) return "";
+  return `https://github.com/${m[1]}/${m[2]}/releases`;
+}
+
+function parseChangelogLatest(text) {
+  const m = String(text || "").match(
+    /^## \[([^\]]+)\](?:\s+-\s+(\S+))?\s*\n([\s\S]*?)(?=\n## \[|$)/m,
+  );
+  if (!m) return { changelogVersion: "", changelogDate: "", changelog: "" };
+  return {
+    changelogVersion: m[1],
+    changelogDate: m[2] || "",
+    changelog: m[3].trim().replace(/\n{3,}/g, "\n\n").slice(0, 1800),
+  };
+}
+
+function versionFromPackageJson(raw) {
+  try {
+    return String(JSON.parse(raw).version || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+async function localReleaseMeta() {
+  let version = "";
+  let notes = { changelogVersion: "", changelogDate: "", changelog: "" };
+  try {
+    version = versionFromPackageJson(
+      await readFile(path.join(QADBAK_DIR, "package.json"), "utf8"),
+    );
+  } catch {
+    version = "";
+  }
+  try {
+    notes = parseChangelogLatest(
+      await readFile(path.join(QADBAK_DIR, "CHANGELOG.md"), "utf8"),
+    );
+  } catch {
+    /* optional */
+  }
+  return { version, originVersion: version, ...notes };
+}
+
 async function ensureDirs() {
   await mkdir(DATA_DIR, { recursive: true });
   await mkdir(JOBS_DIR, { recursive: true });
@@ -372,10 +419,12 @@ async function originBranchRef(branch) {
 
 async function cmdQadbakStatus() {
   if (!(await exists(path.join(QADBAK_DIR, ".git")))) {
+    const meta = await localReleaseMeta();
     return {
       qadbak: {
         isGit: false,
         message: "Not a git checkout.",
+        ...meta,
       },
     };
   }
@@ -385,6 +434,7 @@ async function cmdQadbakStatus() {
   let remoteUrl = "";
   let behind = 0;
   let diverged = false;
+  let remoteRef = "";
   try {
     commit = (
       await run("git", ["-C", QADBAK_DIR, "rev-parse", "--short", "HEAD"], {
@@ -403,12 +453,14 @@ async function cmdQadbakStatus() {
       })
     ).trim();
   } catch (e) {
+    const meta = await localReleaseMeta();
     return {
       qadbak: {
         isGit: true,
         commit,
         branch,
         error: e.message?.slice(0, 200),
+        ...meta,
       },
     };
   }
@@ -417,7 +469,7 @@ async function cmdQadbakStatus() {
       timeout: 120_000,
     });
     const remoteBranch = await originBranchRef(trackingBranch);
-    const remoteRef = `origin/${remoteBranch}`;
+    remoteRef = `origin/${remoteBranch}`;
     const count = (
       await run(
         "git",
@@ -444,6 +496,34 @@ async function cmdQadbakStatus() {
   } catch {
     behind = -1;
   }
+  const meta = await localReleaseMeta();
+  if (behind !== -1 && remoteRef) {
+    try {
+      const originPkg = await run(
+        "git",
+        ["-C", QADBAK_DIR, "show", `${remoteRef}:package.json`],
+        { timeout: 10_000 },
+      );
+      meta.originVersion = versionFromPackageJson(originPkg) || meta.originVersion;
+    } catch {
+      /* keep local version */
+    }
+    try {
+      const originCl = await run(
+        "git",
+        ["-C", QADBAK_DIR, "show", `${remoteRef}:CHANGELOG.md`],
+        { timeout: 10_000 },
+      );
+      const parsed = parseChangelogLatest(originCl);
+      if (parsed.changelogVersion) {
+        meta.changelogVersion = parsed.changelogVersion;
+        meta.changelogDate = parsed.changelogDate;
+        meta.changelog = parsed.changelog;
+      }
+    } catch {
+      /* keep local changelog */
+    }
+  }
   return {
     qadbak: {
       isGit: true,
@@ -455,6 +535,8 @@ async function cmdQadbakStatus() {
       diverged,
       upToDate: behind === 0 && !diverged,
       checkedAt: new Date().toISOString(),
+      releasesUrl: githubReleasesUrl(remoteUrl),
+      ...meta,
     },
   };
 }
