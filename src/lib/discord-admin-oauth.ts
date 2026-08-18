@@ -52,7 +52,7 @@ export async function handleDiscordAdminOAuthCallback(
 
     const jar = await cookies();
     const cookieVal = jar.get(DISCORD_OAUTH_COOKIE)?.value || "";
-    if (!code || !state || !verifyDiscordOAuthState(cookieVal, state)) {
+    if (!code || !state || !(await verifyDiscordOAuthState(cookieVal, state))) {
       return fail("error");
     }
     const cfg = await loadDiscordNotifyConfig();

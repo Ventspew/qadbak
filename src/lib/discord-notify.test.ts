@@ -103,16 +103,16 @@ describe("discord subscribers", () => {
 });
 
 describe("discord oauth state", () => {
-  it("round-trips a signed state cookie", () => {
+  it("round-trips a signed state cookie", async () => {
     const prev = process.env.SESSION_SECRET;
     process.env.SESSION_SECRET = SECRET;
     try {
       const state = "abc123state";
-      const cookie = signDiscordOAuthState(state);
+      const cookie = await signDiscordOAuthState(state);
       expect(cookie).not.toContain(SECRET);
-      expect(verifyDiscordOAuthState(cookie, state)).toBe(true);
-      expect(verifyDiscordOAuthState(cookie, "other")).toBe(false);
-      expect(verifyDiscordOAuthState("tampered", state)).toBe(false);
+      await expect(verifyDiscordOAuthState(cookie, state)).resolves.toBe(true);
+      await expect(verifyDiscordOAuthState(cookie, "other")).resolves.toBe(false);
+      await expect(verifyDiscordOAuthState("tampered", state)).resolves.toBe(false);
     } finally {
       process.env.SESSION_SECRET = prev;
     }

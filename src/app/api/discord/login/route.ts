@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       `https://discord.com/oauth2/authorize?${params.toString()}`,
     ),
   );
-  res.cookies.set(DISCORD_OAUTH_COOKIE, signDiscordOAuthState(state), {
+  res.cookies.set(DISCORD_OAUTH_COOKIE, await signDiscordOAuthState(state), {
     httpOnly: true,
     secure: origin.startsWith("https://"),
     sameSite: "lax",

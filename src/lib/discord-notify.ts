@@ -1,7 +1,8 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import fs from "fs/promises";
 import path from "path";
+import { SignJWT, jwtVerify } from "jose";
+import { JWT_ISSUER } from "./session-cookies";
 
 const CONFIG_PATH = path.join(process.cwd(), "data", "discord-notify.json");
 const SUBS_PATH = path.join(process.cwd(), "data", "discord-subscribers.json");
@@ -342,39 +343,42 @@ export async function dmAllLinkedSubscribers(
   return result;
 }
 
-function oauthHmacKey(): string {
+const OAUTH_STATE_AUD = "qadbak-discord-oauth";
+const OAUTH_STATE_TYP = "discord-oauth";
+
+function oauthSecretKey(): Uint8Array {
   const s = process.env.SESSION_SECRET?.trim();
   if (!s || s.length < 16) {
     throw new Error("SESSION_SECRET is missing or too short.");
   }
-  return s;
+  return new TextEncoder().encode(s);
 }
 
-export function signDiscordOAuthState(state: string): string {
-  const ts = String(Date.now());
-  const payload = `${state}.${ts}`;
-  const sig = createHmac("sha256", oauthHmacKey()).update(payload).digest("hex");
-  return `${payload}.${sig}`;
+/** Signed CSRF cookie for Discord OAuth — HS256 JWT, not a password hash. */
+export async function signDiscordOAuthState(state: string): Promise<string> {
+  return new SignJWT({ typ: OAUTH_STATE_TYP, st: state })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuer(JWT_ISSUER)
+    .setAudience(OAUTH_STATE_AUD)
+    .setIssuedAt()
+    .setExpirationTime("10m")
+    .sign(oauthSecretKey());
 }
 
-export function verifyDiscordOAuthState(
+export async function verifyDiscordOAuthState(
   cookieValue: string,
   state: string,
   maxAgeMs = 600_000,
-): boolean {
-  const parts = cookieValue.split(".");
-  if (parts.length !== 3) return false;
-  const [cookieState, ts, sig] = parts;
-  if (!cookieState || !ts || !sig || cookieState !== state) return false;
-  const age = Date.now() - Number(ts);
-  if (!Number.isFinite(age) || age < 0 || age > maxAgeMs) return false;
-  const payload = `${cookieState}.${ts}`;
-  const expect = createHmac("sha256", oauthHmacKey()).update(payload).digest("hex");
+): Promise<boolean> {
+  if (!cookieValue || !state) return false;
   try {
-    const a = Buffer.from(sig, "hex");
-    const b = Buffer.from(expect, "hex");
-    if (a.length !== b.length) return false;
-    return timingSafeEqual(a, b);
+    const { payload } = await jwtVerify(cookieValue, oauthSecretKey(), {
+      algorithms: ["HS256"],
+      issuer: JWT_ISSUER,
+      audience: OAUTH_STATE_AUD,
+      maxTokenAge: `${Math.max(1, Math.floor(maxAgeMs / 1000))}s`,
+    });
+    return payload.typ === OAUTH_STATE_TYP && payload.st === state;
   } catch {
     return false;
   }
