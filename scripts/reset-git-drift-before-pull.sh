@@ -8,6 +8,10 @@ for rel in \
   scripts/install-native-stack.sh \
   scripts/lib/linux-distro.sh \
   scripts/lib/ubuntu-release.sh \
+  scripts/lib/domain-fs-shell-commands.txt \
+  scripts/lib/host-services-shell-commands.txt \
+  scripts/lib/stack-helper-shell-commands.txt \
+  scripts/lib/update-helper-shell-commands.txt \
   scripts/run-domain-fs-helper.sh \
   scripts/run-host-services-helper.sh \
   scripts/run-stack-helper.sh \
