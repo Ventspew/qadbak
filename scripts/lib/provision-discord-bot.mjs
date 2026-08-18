@@ -396,7 +396,7 @@ export async function discordBotInstall(domain, payloadJson) {
     botRedirectUri: `${publicUrl}/auth/callback`,
     slashCommands: (recipes.tasks || [])
       .filter((t) => t.enabled !== false && ["qadbak.status", "qadbak.help", "qadbak.uptime", "minecraft.status", "slash.reply", "slash.embed", "poll.create"].includes(t.type))
-      .map((t) => `/${t.params?.name || t.type}`),
+      .map((t) => `!${t.params?.name || t.type.replace(/^qadbak\./, "").replace(/^minecraft\./, "").replace(/^slash\./, "")}`),
     postInstall: [
       botInvite
         ? `Invite THIS app's bot to YOUR Discord server: ${botInvite}`
@@ -404,7 +404,7 @@ export async function discordBotInstall(domain, payloadJson) {
       `Public page for this domain: ${publicUrl}`,
       `Add OAuth redirect: ${publicUrl}/auth/callback in that same Discord application.`,
       "Do not reuse the panel host bot — every customer creates their own Discord application.",
-      "Optional: Message Content + Server Members intents for keyword replies, welcomes, and auto-roles.",
+      "Type !status in Discord. Enable Message Content Intent for !commands in a server (DMs work without it).",
     ],
   };
   emit(result);

@@ -39,19 +39,19 @@ type BotPresence = {
 
 const TASK_TYPES: Array<{ value: string; label: string; hint: string }> = [
   { value: "qadbak.alerts", label: "Qadbak alerts (channel)", hint: "Disk, RAM, load, nginx/pm2, Docker, installs" },
-  { value: "qadbak.status", label: "Slash /status", hint: "RAM, disk, load, Docker as an embed" },
-  { value: "qadbak.disk", label: "Slash /disk", hint: "Disk usage per mount" },
-  { value: "qadbak.docker", label: "Slash /docker", hint: "Container states" },
-  { value: "qadbak.load", label: "Slash /load", hint: "CPU load averages" },
-  { value: "qadbak.ping", label: "Slash /ping", hint: "Bot online check" },
-  { value: "qadbak.about", label: "Slash /about", hint: "What this bot does" },
-  { value: "qadbak.invite", label: "Slash /invite", hint: "Invite URL for this bot" },
-  { value: "qadbak.help", label: "Slash /help", hint: "Lists enabled commands" },
-  { value: "qadbak.uptime", label: "Slash /uptime", hint: "Bot uptime plus host snapshot" },
-  { value: "minecraft.status", label: "Slash /minecraft", hint: "Online/offline if Minecraft is installed" },
-  { value: "slash.reply", label: "Custom slash reply", hint: "Command name + canned text" },
-  { value: "slash.embed", label: "Slash embed", hint: "Rich embed: title, text, color" },
-  { value: "poll.create", label: "Slash /poll", hint: "Ask a question, bot adds 👍👎" },
+  { value: "qadbak.status", label: "!status", hint: "RAM, disk, load, Docker as an embed" },
+  { value: "qadbak.disk", label: "!disk", hint: "Disk usage per mount" },
+  { value: "qadbak.docker", label: "!docker", hint: "Container states" },
+  { value: "qadbak.load", label: "!load", hint: "CPU load averages" },
+  { value: "qadbak.ping", label: "!ping", hint: "Bot online check" },
+  { value: "qadbak.about", label: "!about", hint: "What this bot does" },
+  { value: "qadbak.invite", label: "!invite", hint: "Invite URL for this bot" },
+  { value: "qadbak.help", label: "!help", hint: "Lists enabled commands" },
+  { value: "qadbak.uptime", label: "!uptime", hint: "Bot uptime plus host snapshot" },
+  { value: "minecraft.status", label: "!minecraft", hint: "Online/offline if Minecraft is installed" },
+  { value: "slash.reply", label: "Custom !command reply", hint: "Name + canned text — also works as /name" },
+  { value: "slash.embed", label: "!embed", hint: "Rich embed: title, text, color" },
+  { value: "poll.create", label: "!poll", hint: "Ask a question, bot adds 👍👎" },
   { value: "scheduled.post", label: "Scheduled post", hint: "Repeat a message every N minutes" },
   { value: "auto.role", label: "Auto-role on join", hint: "Role ID — needs Server Members intent" },
   { value: "keyword.reply", label: "Keyword reply", hint: "If a message contains a word, reply" },
@@ -192,7 +192,7 @@ export function AdminDiscordPage() {
       setSuccess(
         data.synced
           ? `Tasks saved and copied to ${data.synced} hosted bot(s).`
-          : "Tasks saved. Install the Discord Bot app to host slash commands in Discord.",
+          : "Tasks saved. Install the Discord Bot app so !status and other commands stay online.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
@@ -503,8 +503,9 @@ export function AdminDiscordPage() {
         <h2 className="text-lg font-medium text-white">No-code tasks</h2>
         <p className="text-sm text-panel-muted">
           Assign what the bot does — no code editor. Host alerts run from the panel
-          daemon. Slash commands and keyword/welcome need the Discord Bot app
-          (App store) so the bot stays online.
+          daemon. Prefix commands (<code>!status</code>) and keyword/welcome need the
+          Discord Bot app so the bot stays online. Enable Message Content Intent
+          in the Developer Portal for <code>!status</code> in a server channel.
         </p>
         <div>
           <Label>Bot display name</Label>
@@ -572,7 +573,7 @@ export function AdminDiscordPage() {
                 task.type === "poll.create") && (
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>
-                    <Label>Slash name</Label>
+                    <Label>Command name (!name)</Label>
                     <Input
                       value={task.params.name ?? ""}
                       placeholder={task.type === "minecraft.status" ? "minecraft" : "status"}
@@ -804,7 +805,8 @@ export function AdminDiscordPage() {
         </div>
         {slashCommands.length > 0 && (
           <p className="text-xs text-panel-muted">
-            Will register: {slashCommands.map((c) => `/${c.name}`).join(", ")}
+            Will register as /name (optional) and !name:{" "}
+            {slashCommands.map((c) => `!${c.name}`).join(", ")}
           </p>
         )}
       </Card>

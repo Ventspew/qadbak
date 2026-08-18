@@ -457,32 +457,15 @@ def html_page(body: str) -> bytes:
             guild = (
                 f'<p class="muted">Guild invite: <a href="{esc(guild_url)}">{esc(guild_url)}</a></p>'
             )
-    tasks = load_tasks().get("tasks") or []
-    slashes = []
-    for row in tasks:
-        if row.get("enabled") is False:
-            continue
-        kind = str(row.get("type") or "")
-        params = row.get("params") or {}
-        if kind == "qadbak.status":
-            slashes.append("/" + (params.get("name") or "status"))
-        elif kind == "minecraft.status":
-            slashes.append("/" + (params.get("name") or "minecraft"))
-        elif kind == "qadbak.help":
-            slashes.append("/" + (params.get("name") or "help"))
-        elif kind == "qadbak.uptime":
-            slashes.append("/" + (params.get("name") or "uptime"))
-        elif kind == "slash.embed" and params.get("name"):
-            slashes.append("/" + str(params.get("name")))
-        elif kind == "poll.create":
-            slashes.append("/" + (params.get("name") or "poll"))
-    slash_html = ", ".join(slashes) if slashes else "none yet — assign tasks in the Qadbak panel"
-    if uses_host_discord_app():
-        slash_html = "not published on this page"
+    slash_html = (
+        "not published on this page"
+        if uses_host_discord_app()
+        else ", ".join(prefix_commands_from_loaded())
+    )
     intro = (
         "<p>This is the panel operator bot page. It is not a public invite.</p>"
         if uses_host_discord_app()
-        else "<p>Qadbak Discord bot — no-code tasks and slash commands for this domain.</p>"
+        else "<p>Qadbak Discord bot — type <code>!status</code> in Discord (or <code>!help</code>).</p>"
     )
     page = f"""<!DOCTYPE html>
 <html lang="en"><head>
@@ -501,10 +484,10 @@ code {{ background:#1e293b; padding:.15rem .4rem; border-radius:.35rem; }}
 {intro}
 {invite_html}
 {login}
-<p>Slash commands: {slash_html}</p>
+<p>Commands: {slash_html}</p>
 {body}
 {guild}
-<p class="muted">Enable <strong>Message Content</strong> and <strong>Server Members</strong> intents in Discord Developer Portal for keyword replies and welcomes.</p>
+<p class="muted">For <code>!status</code> in a server channel, enable <strong>Message Content Intent</strong> in Discord Developer Portal → Bot. DMs and @mentions work without it. Server Members is only for welcomes/auto-role.</p>
 </main></body></html>"""
     return page.encode()
 
@@ -737,7 +720,34 @@ def slash_commands_from_loaded() -> list[str]:
     return names
 
 
-def start_bot() -> None:
+def prefix_commands_from_loaded() -> list[str]:
+    return ["!" + n.lstrip("/") for n in slash_commands_from_loaded()]
+
+
+def parse_prefix_command(content: str, bot_user_id: int | None) -> tuple[str, str]:
+    """Parse `!status` or `@bot status`. Empty if this message is not a command."""
+    raw = (content or "").strip()
+    if not raw:
+        return "", ""
+    if bot_user_id:
+        for form in (f"<@{bot_user_id}>", f"<@!{bot_user_id}>"):
+            if raw.startswith(form):
+                raw = raw[len(form) :].strip()
+                if raw.startswith("!"):
+                    raw = raw[1:].lstrip()
+                parts = raw.split(None, 1)
+                if not parts:
+                    return "help", ""
+                return parts[0].lower().lstrip("!/"), (parts[1] if len(parts) > 1 else "")
+    if raw.startswith("!"):
+        parts = raw[1:].split(None, 1)
+        if not parts or not parts[0]:
+            return "", ""
+        return parts[0].lower().lstrip("/"), (parts[1] if len(parts) > 1 else "")
+    return "", ""
+
+
+def start_bot(*, message_content: bool = True) -> None:
     if not BOT_TOKEN:
         print("discord gateway off (no bot token)", flush=True)
         return
@@ -750,97 +760,107 @@ def start_bot() -> None:
         return
 
     intents = discord.Intents.default()
-    # Do not require Message Content / Server Members — those privileged
-    # intents prevent the gateway from connecting if they are off in the portal,
-    # which silently stops all channel updates. Keyword/welcome stay optional.
-    bot = commands.Bot(command_prefix="!", intents=intents)
+    intents.message_content = message_content
+    bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
-    async def handle_named(interaction: discord.Interaction, name: str) -> None:
+    async def command_result(name: str, extra: str = "") -> dict | None:
         snap = await asyncio.to_thread(host_snapshot)
+        name = (name or "").lower().strip()
+        listed = prefix_commands_from_loaded()
+        help_text = "Commands: " + ", ".join(f"`{n}`" for n in listed)
+        about_text = (
+            f"**{BOT_NAME}** is the Qadbak Discord bot for this host.\n"
+            "Type `!status` `!disk` `!docker` `!help` in chat. "
+            "Channel alerts cover disk, RAM, Docker and Minecraft."
+        )
         builtins = {
-            "status": lambda: interaction.response.send_message(embed=status_embed(snap), ephemeral=True),
-            "disk": lambda: interaction.response.send_message(format_disk(snap), ephemeral=True),
-            "docker": lambda: interaction.response.send_message(format_docker(snap), ephemeral=True),
-            "load": lambda: interaction.response.send_message(format_load(snap), ephemeral=True),
-            "ping": lambda: interaction.response.send_message("Pong — Qadbak bot is online.", ephemeral=True),
-            "about": lambda: interaction.response.send_message(
-                f"**{BOT_NAME}** is the Qadbak Discord bot for this host.\n"
-                "Use slash commands for live status. Channel alerts cover disk, RAM, Docker and Minecraft.",
-                ephemeral=True,
-            ),
-            "invite": lambda: interaction.response.send_message(
-                invite_url() or "Save a Discord application client ID in Qadbak first.",
-                ephemeral=True,
-            ),
-            "uptime": lambda: interaction.response.send_message(
-                embed=status_embed(snap, title=f"Uptime ≈ {max(1, int((time.time() - BOT_STARTED) / 60))} min"),
-                ephemeral=True,
-            ),
-            "help": lambda: interaction.response.send_message(
-                "Commands: " + ", ".join(f"`{n}`" for n in slash_commands_from_loaded() or ["/status"]),
-                ephemeral=True,
-            ),
-            "minecraft": lambda: interaction.response.send_message(format_minecraft(snap), ephemeral=True),
+            "status": {"embed": status_embed(snap)},
+            "disk": {"content": format_disk(snap)},
+            "docker": {"content": format_docker(snap)},
+            "load": {"content": format_load(snap)},
+            "ping": {"content": "Pong — Qadbak bot is online."},
+            "about": {"content": about_text},
+            "invite": {
+                "content": invite_url() or "Save a Discord application client ID in Qadbak first."
+            },
+            "uptime": {
+                "embed": status_embed(
+                    snap,
+                    title=f"Uptime ≈ {max(1, int((time.time() - BOT_STARTED) / 60))} min",
+                )
+            },
+            "help": {"content": help_text},
+            "minecraft": {"content": format_minecraft(snap)},
         }
         if name in builtins:
-            await builtins[name]()
-            return
+            return builtins[name]
         for row in load_tasks().get("tasks") or []:
             if row.get("enabled") is False:
                 continue
             kind = str(row.get("type") or "")
             params = row.get("params") or {}
             if kind == "qadbak.status" and slash_name(params, "status") == name:
-                await interaction.response.send_message(embed=status_embed(snap), ephemeral=True)
-                return
+                return {"embed": status_embed(snap)}
             if kind == "minecraft.status" and slash_name(params, "minecraft") == name:
-                await interaction.response.send_message(format_minecraft(snap), ephemeral=True)
-                return
+                return {"content": format_minecraft(snap)}
             if kind == "slash.reply" and slash_name(params, "") == name:
-                text = str(params.get("text") or "OK")[:1900]
-                await interaction.response.send_message(text)
-                return
+                return {"content": str(params.get("text") or "OK")[:1900]}
             if kind == "qadbak.help" and slash_name(params, "help") == name:
-                listed = slash_commands_from_loaded()
-                await interaction.response.send_message(
-                    "Commands: " + (", ".join(f"`{n}`" for n in listed) if listed else "none yet"),
-                    ephemeral=True,
-                )
-                return
+                return {"content": help_text}
             if kind == "qadbak.uptime" and slash_name(params, "uptime") == name:
                 mins = max(1, int((time.time() - BOT_STARTED) / 60))
-                await interaction.response.send_message(
-                    embed=status_embed(snap, title=f"Uptime ≈ {mins} min"),
-                    ephemeral=True,
-                )
-                return
+                return {"embed": status_embed(snap, title=f"Uptime ≈ {mins} min")}
             if kind == "qadbak.disk" and slash_name(params, "disk") == name:
-                await interaction.response.send_message(format_disk(snap), ephemeral=True)
-                return
+                return {"content": format_disk(snap)}
             if kind == "qadbak.docker" and slash_name(params, "docker") == name:
-                await interaction.response.send_message(format_docker(snap), ephemeral=True)
-                return
+                return {"content": format_docker(snap)}
             if kind == "qadbak.load" and slash_name(params, "load") == name:
-                await interaction.response.send_message(format_load(snap), ephemeral=True)
-                return
+                return {"content": format_load(snap)}
             if kind == "qadbak.ping" and slash_name(params, "ping") == name:
-                await interaction.response.send_message("Pong — Qadbak bot is online.", ephemeral=True)
-                return
+                return {"content": "Pong — Qadbak bot is online."}
             if kind == "qadbak.about" and slash_name(params, "about") == name:
-                await builtins["about"]()
-                return
+                return {"content": about_text}
             if kind == "qadbak.invite" and slash_name(params, "invite") == name:
-                await builtins["invite"]()
-                return
+                return builtins["invite"]
             if kind == "slash.embed" and slash_name(params, "info") == name:
                 title = str(params.get("title") or BOT_NAME)[:256]
                 desc = str(params.get("text") or params.get("description") or "")[:1900]
                 color_raw = re.sub(r"[^0-9a-fA-F]", "", str(params.get("color") or "5865F2"))[:6]
                 color = int(color_raw or "5865F2", 16)
-                embed = discord.Embed(title=title, description=desc or None, color=color)
-                await interaction.response.send_message(embed=embed)
-                return
-        await interaction.response.send_message("That command is not assigned.", ephemeral=True)
+                return {"embed": discord.Embed(title=title, description=desc or None, color=color)}
+            if kind == "poll.create" and slash_name(params, "poll") == name:
+                q = (extra or str(params.get("question") or "")).strip()[:1800] or "Yes or no?"
+                return {"content": f"**Poll:** {q}", "poll_reactions": True}
+        return None
+
+    async def handle_named(interaction: discord.Interaction, name: str, extra: str = "") -> None:
+        payload = await command_result(name, extra)
+        if not payload:
+            await interaction.response.send_message("That command is not assigned.", ephemeral=True)
+            return
+        payload = dict(payload)
+        public = payload.get("poll_reactions") or name not in {
+            "status",
+            "disk",
+            "docker",
+            "load",
+            "ping",
+            "about",
+            "invite",
+            "uptime",
+            "help",
+            "minecraft",
+        }
+        reactions = payload.pop("poll_reactions", False)
+        kwargs = {k: v for k, v in payload.items() if k in ("content", "embed")}
+        await interaction.response.send_message(**kwargs, ephemeral=not public)
+        if reactions:
+            msg = await interaction.original_response()
+            for emoji in ("👍", "👎"):
+                try:
+                    await msg.add_reaction(emoji)
+                except Exception:
+                    pass
 
     async def rebuild_tree() -> None:
         bot.tree.clear_commands(guild=None)
@@ -924,7 +944,7 @@ def start_bot() -> None:
             ("load", "CPU load averages"),
             ("ping", "Check that the bot is online"),
             ("uptime", "Bot and host uptime"),
-            ("help", "List slash commands"),
+            ("help", "List bot commands"),
             ("about", "What this bot does"),
             ("invite", "Invite this bot to a server"),
             ("minecraft", "Minecraft server status"),
@@ -980,6 +1000,27 @@ def start_bot() -> None:
     async def on_message(message: discord.Message):
         if message.author.bot:
             return
+        cmd, extra = parse_prefix_command(
+            message.content or "", bot.user.id if bot.user else None
+        )
+        if cmd:
+            payload = await command_result(cmd, extra)
+            if payload:
+                payload = dict(payload)
+                reactions = payload.pop("poll_reactions", False)
+                try:
+                    sent = await message.channel.send(
+                        **{k: v for k, v in payload.items() if k in ("content", "embed")}
+                    )
+                    if reactions:
+                        for emoji in ("👍", "👎"):
+                            try:
+                                await sent.add_reaction(emoji)
+                            except Exception:
+                                pass
+                except Exception as e:
+                    print(f"WARN prefix: {e}", flush=True)
+                return
         content = (message.content or "").lower()
         if not content:
             return
@@ -1083,7 +1124,7 @@ def start_bot() -> None:
                     title=f"{BOT_NAME} is watching this host",
                     description=(
                         "Live alerts for disk, RAM, Docker and Minecraft. "
-                        "Try `/status` `/disk` `/docker` `/help`."
+                        "Type `!status` `!disk` `!docker` `!help` in chat."
                     ),
                     color=0x5865F2,
                 )
@@ -1128,12 +1169,31 @@ def start_bot() -> None:
         if not host_watch.is_running():
             host_watch.start()
         if len(bot.guilds) == 0:
-            print("WARN: bot is in 0 Discord servers — click Invite on the public page", flush=True)
+            print("WARN: bot is in 0 Discord servers — invite it from Server → Discord (admin)", flush=True)
 
     try:
+        print(f"discord gateway starting message_content={message_content}", flush=True)
         bot.run(BOT_TOKEN)
+    except discord.PrivilegedIntentsRequired:
+        print(
+            "WARN Message Content Intent is off in Discord Developer Portal. "
+            "Retrying without it so alerts keep working. "
+            "Enable Message Content Intent for !status in a server channel "
+            "(DMs and @mentions already work).",
+            flush=True,
+        )
+        if message_content:
+            start_bot(message_content=False)
     except Exception as e:
-        print(f"WARN gateway: {e}", flush=True)
+        err = str(e).lower()
+        if message_content and "privileged" in err:
+            print(
+                f"WARN gateway intents: {e} — retrying without Message Content",
+                flush=True,
+            )
+            start_bot(message_content=False)
+        else:
+            print(f"WARN gateway: {e}", flush=True)
 
 
 def main() -> None:

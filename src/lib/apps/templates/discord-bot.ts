@@ -9,7 +9,7 @@ export const discordBotTemplate: AppTemplate = {
   description:
     "Hosts a Discord bot for this domain. Create a Discord application in the " +
     "Developer Portal (one per customer), paste that token and client ID, then " +
-    "invite the bot to YOUR server. Slash commands, keywords, welcomes, polls, " +
+    "invite the bot to YOUR server. Type !status in Discord, plus keywords, " +
     "and alerts are assigned without code. Public page at bot.yourdomain.com. " +
     "The panel /admin/discord bot is the host operator bot — not this app.",
   etaSeconds: 180,
@@ -72,25 +72,25 @@ export const discordBotTemplate: AppTemplate = {
     },
     {
       name: "taskStatus",
-      label: "Task: slash /status",
+      label: "Task: !status",
       type: "boolean",
       defaultValue: "true",
     },
     {
       name: "taskMinecraft",
-      label: "Task: slash /minecraft",
+      label: "Task: !minecraft",
       type: "boolean",
       defaultValue: "true",
     },
     {
       name: "taskHelp",
-      label: "Task: slash /help",
+      label: "Task: !help",
       type: "boolean",
       defaultValue: "true",
     },
     {
       name: "taskUptime",
-      label: "Task: slash /uptime",
+      label: "Task: !uptime",
       type: "boolean",
       defaultValue: "true",
     },
@@ -165,7 +165,7 @@ export const discordBotTemplate: AppTemplate = {
     }
     if (result.slashCommands?.length) {
       credentials.push({
-        label: "Slash commands",
+        label: "Commands",
         value: result.slashCommands.join(" "),
         isSecret: false,
       });
