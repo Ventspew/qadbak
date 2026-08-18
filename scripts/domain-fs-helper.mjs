@@ -333,6 +333,29 @@ function isPathInside(parent, child) {
   return child === parent || child.startsWith(`${parent}${path.sep}`);
 }
 
+async function copyTree(srcAbs, destAbs) {
+  destAbs = String(destAbs ?? "");
+  if (!destAbs) fail("destAbs required.");
+  const src = await assertHomePath(srcAbs);
+  const destResolved = path.resolve(destAbs);
+  if (destResolved !== "/home" && !destResolved.startsWith("/home/")) {
+    fail("Path must be under /home/.");
+  }
+  const srcUser = homeUnixUser(`${src}/`);
+  const destUser = homeUnixUser(`${destResolved}/`);
+  if (!srcUser || srcUser !== destUser) fail("Copy must stay in the same home.");
+  await fs.mkdir(destResolved, { recursive: true });
+  const dest = await assertHomePath(destResolved);
+  if (src === dest) {
+    emit({ ok: true, copied: false });
+    return;
+  }
+  if (isPathInside(src, dest)) fail("Cannot copy a folder into itself.");
+  await execFileAsync("cp", ["-a", `${src}/.`, dest]);
+  await chownTree(dest);
+  emit({ ok: true, copied: true });
+}
+
 async function movePath(srcAbs, payload) {
   const destAbs = String(payload.destAbs ?? "");
   const overwrite = payload.overwrite === true;
@@ -462,6 +485,11 @@ async function main() {
     case "mkdir":
       await mkdirPath(target);
       break;
+    case "copy-tree": {
+      const payload = payloadRaw ? JSON.parse(payloadRaw) : {};
+      await copyTree(target, payload.destAbs);
+      break;
+    }
     case "unlink":
       await removePath(target);
       break;

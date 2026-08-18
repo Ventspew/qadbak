@@ -4,6 +4,7 @@ import {
   defaultDirFromRoots,
   filesRootFromWebRoot,
   isAbsInsideRoot,
+  isLegacyAppWww,
   isSharedUnixSubdomain,
   sharedSubDocroot,
   sharedSubFilesRoot,
@@ -59,5 +60,16 @@ describe("domain-docroot", () => {
     const web = `${home}/apps/minecraft/www`;
     expect(filesRootFromWebRoot(home, web)).toBe(web);
     expect(defaultDirFromRoots(web, web)).toBe("");
+  });
+
+  it("detects leftover bot/app www folders under ~/apps", () => {
+    const home = "/home/site";
+    expect(isLegacyAppWww(home, `${home}/apps/discord-bot/www`)).toBe(true);
+    expect(isLegacyAppWww(home, `${home}/apps/telegram-bot/www`)).toBe(true);
+    expect(isLegacyAppWww(home, `${home}/apps/minecraft/www`)).toBe(true);
+    expect(isLegacyAppWww(home, `${home}/domains/bot.example.com/public_html`)).toBe(
+      false,
+    );
+    expect(isLegacyAppWww(home, `${home}/public_html`)).toBe(false);
   });
 });

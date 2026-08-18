@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   defaultDirFromRoots,
   filesRootFromWebRoot,
+  isLegacyAppWww,
   isSharedUnixSubdomain,
   sharedSubDocroot,
 } from "./domain-docroot";
@@ -21,23 +22,55 @@ export type DomainFilesContext = {
   defaultDir: string;
   jailed: boolean;
   quickPaths: { id: string; label: string; description: string }[];
+  /** Old apps/{app}/www path to copy into the subdomain public_html. */
+  migrateFrom?: string;
 };
 
-async function readWebsiteJson(domain: string): Promise<{ webRoot?: string }> {
-  const file = path.join(
+function websiteJsonPath(domain: string): string {
+  return path.join(
     QADBAK_DIR,
     "data",
     "domain-config",
     domain.toLowerCase(),
     "website.json",
   );
+}
+
+async function readWebsiteJson(domain: string): Promise<Record<string, unknown>> {
   try {
-    const raw = await fs.readFile(file, "utf8");
-    const o = JSON.parse(raw) as { webRoot?: string };
+    const raw = await fs.readFile(websiteJsonPath(domain), "utf8");
+    const o = JSON.parse(raw) as Record<string, unknown>;
     return o && typeof o === "object" ? o : {};
   } catch {
     return {};
   }
+}
+
+/** Point website.json at the canonical subdomain public_html after copying leftover app www folders. */
+export async function persistCanonicalWebRoot(
+  domain: string,
+  webRoot: string,
+): Promise<void> {
+  const file = websiteJsonPath(domain);
+  const cur = await readWebsiteJson(domain);
+  if (String(cur.webRoot || "").trim() === webRoot) return;
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(
+    file,
+    `${JSON.stringify(
+      {
+        ...cur,
+        webRoot,
+        mode: typeof cur.mode === "string" && cur.mode ? cur.mode : "static",
+        wwwRedirect:
+          typeof cur.wwwRedirect === "string" && cur.wwwRedirect
+            ? cur.wwwRedirect
+            : "none",
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 export async function resolveDomainFilesContext(
@@ -57,11 +90,17 @@ export async function resolveDomainFilesContext(
   const home = `/home/${unixUser}`;
   const site = await readWebsiteJson(name);
   const shared = isSharedUnixSubdomain(row, parent);
-  const webRoot = String(site.webRoot || "").trim()
-    ? String(site.webRoot).trim()
+  const configured = String(site.webRoot || "").trim();
+  let webRoot = configured
+    ? configured
     : shared
       ? sharedSubDocroot(home, name)
       : `${home}/public_html`;
+  let migrateFrom: string | undefined;
+  if (shared && configured && isLegacyAppWww(home, configured)) {
+    migrateFrom = configured;
+    webRoot = sharedSubDocroot(home, name);
+  }
   const filesRoot = filesRootFromWebRoot(home, webRoot);
   const defaultDir = defaultDirFromRoots(filesRoot, webRoot);
   const jailed = filesRoot !== home;
@@ -83,6 +122,7 @@ export async function resolveDomainFilesContext(
     defaultDir,
     jailed,
     quickPaths,
+    migrateFrom,
   };
 }
 

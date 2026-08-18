@@ -3,6 +3,7 @@ read *
 stream *
 write *
 mkdir *
+copy-tree *
 unlink *
 move *
 crontab-list *

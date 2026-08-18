@@ -5,6 +5,8 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { dnsAdd } from "./provision-dns.mjs";
 import { sslIssueBestEffort } from "./provision-ssl.mjs";
+import { ensureSharedSubdomain, publishSharedSubDocroot } from "./ensure-shared-subdomain.mjs";
+import { sharedSubDocroot } from "./domain-docroot.mjs";
 import {
   emit,
   fail,
@@ -211,26 +213,7 @@ async function reloadNginx(domain, user) {
 }
 
 async function ensureMcSubdomain(parentDomain, user, subPrefix) {
-  const host = `${subPrefix}.${parentDomain}`;
-  const rows = await loadRegistry();
-  if (rows.some((r) => r.name === host)) return host;
-  const parentRow = rows.find((r) => r.name === parentDomain);
-  if (!parentRow) fail(`Unknown parent domain: ${parentDomain}`);
-  rows.push({
-    name: host,
-    user,
-    disabled: false,
-    plan: parentRow.plan || "Default",
-    type: "sub",
-    parent: parentDomain,
-    isDefault: false,
-  });
-  await saveRegistry(rows);
-  const home = `/home/${user}`;
-  await mkdir(domainConfigDir(host), { recursive: true });
-  await mkdir(path.join(home, "public_html"), { recursive: true });
-  await reloadNginx(host, user);
-  return host;
+  return ensureSharedSubdomain(parentDomain, user, subPrefix);
 }
 
 function landingHtml({ joinHost, port, packLabel, motd }) {
@@ -409,7 +392,7 @@ export async function minecraftInstall(domain, payloadJson) {
 
   const appsDir = path.join(home, "apps", "minecraft");
   const dataDir = path.join(appsDir, "data");
-  const wwwDir = path.join(appsDir, "www");
+  const wwwDir = sharedSubDocroot(home, mcHost);
   await mkdir(dataDir, { recursive: true });
   await mkdir(wwwDir, { recursive: true });
   if (pack.folder) {
@@ -478,6 +461,7 @@ export async function minecraftInstall(domain, payloadJson) {
   assertComposePolicyYaml(compose);
   await writeFile(composePath, compose, "utf8");
 
+  await publishSharedSubDocroot(home, mcHost, user, path.join(appsDir, "www"));
   await writeFile(
     path.join(wwwDir, "index.html"),
     landingHtml({
@@ -488,7 +472,7 @@ export async function minecraftInstall(domain, payloadJson) {
     }),
     "utf8",
   );
-  await exec("chown", ["-R", `${user}:${user}`, appsDir], { timeout: 60_000 });
+  await exec("chown", ["-R", `${user}:${user}`, appsDir, wwwDir], { timeout: 60_000 });
 
   await ensureDocker();
   await openFirewall(port);

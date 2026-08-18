@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { dnsAdd } from "./provision-dns.mjs";
 import { sslIssueBestEffort } from "./provision-ssl.mjs";
+import { ensureSharedSubdomain } from "./ensure-shared-subdomain.mjs";
 import {
   emit,
   fail,
@@ -178,30 +179,7 @@ async function readDiskLimitMb(domain) {
 }
 
 async function ensureMediaSubdomain(parentDomain, user, subPrefix) {
-  const mediaHost = `${subPrefix}.${parentDomain}`;
-  const rows = await loadRegistry();
-  if (rows.some((r) => r.name === mediaHost)) {
-    return mediaHost;
-  }
-  const parentRow = rows.find((r) => r.name === parentDomain);
-  if (!parentRow) fail(`Unknown parent domain: ${parentDomain}`);
-
-  rows.push({
-    name: mediaHost,
-    user,
-    disabled: false,
-    plan: parentRow.plan || "Default",
-    type: "sub",
-    parent: parentDomain,
-    isDefault: false,
-  });
-  await saveRegistry(rows);
-
-  const home = `/home/${user}`;
-  await mkdir(domainConfigDir(mediaHost), { recursive: true });
-  await mkdir(path.join(home, "public_html"), { recursive: true });
-  await reloadNginx(mediaHost, user);
-  return mediaHost;
+  return ensureSharedSubdomain(parentDomain, user, subPrefix);
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   resolveMoveDestination,
 } from "./domain-files";
 import {
+  persistCanonicalWebRoot,
   resolveDomainFilesContext,
   type DomainFilesContext,
 } from "./domain-files-context";
@@ -103,6 +104,18 @@ async function ensureFilesTree(ctx: DomainFilesContext): Promise<void> {
       await runHelper("mkdir", ctx.webRoot);
     } catch {
       /* exists */
+    }
+  }
+  if (ctx.migrateFrom && ctx.migrateFrom !== ctx.webRoot) {
+    try {
+      await runHelper("copy-tree", ctx.migrateFrom, { destAbs: ctx.webRoot });
+    } catch {
+      /* source missing */
+    }
+    try {
+      await persistCanonicalWebRoot(ctx.domain, ctx.webRoot);
+    } catch {
+      /* panel can still list the canonical tree */
     }
   }
 }

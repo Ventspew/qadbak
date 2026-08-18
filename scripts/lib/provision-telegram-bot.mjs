@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { dnsAdd } from "./provision-dns.mjs";
 import { sslIssueBestEffort } from "./provision-ssl.mjs";
+import { ensureSharedSubdomain, publishSharedSubDocroot } from "./ensure-shared-subdomain.mjs";
 import {
   emit,
   fail,
@@ -382,26 +383,7 @@ async function upsertProxy(domain, loc, dest) {
 }
 
 async function ensureBotSubdomain(parentDomain, user, subPrefix) {
-  const host = `${subPrefix}.${parentDomain}`;
-  const rows = await loadRegistry();
-  if (rows.some((r) => r.name === host)) return host;
-  const parentRow = rows.find((r) => r.name === parentDomain);
-  if (!parentRow) fail(`Unknown parent domain: ${parentDomain}`);
-  rows.push({
-    name: host,
-    user,
-    disabled: false,
-    plan: parentRow.plan || "Default",
-    type: "sub",
-    parent: parentDomain,
-    isDefault: false,
-  });
-  await saveRegistry(rows);
-  const home = `/home/${user}`;
-  await mkdir(domainConfigDir(host), { recursive: true });
-  await mkdir(path.join(home, "public_html"), { recursive: true });
-  await reloadNginx(host, user);
-  return host;
+  return ensureSharedSubdomain(parentDomain, user, subPrefix);
 }
 
 function buildCompose({
@@ -507,12 +489,7 @@ export async function telegramBotInstall(domain, payloadJson) {
   if (originIp) {
     await dnsAdd(parent, { name: subPrefix, type: "A", value: originIp }).catch(() => {});
   }
-  await writeDomainConfigJson(botHost, "website.json", {
-    webRoot: path.join(appsDir, "www"),
-    mode: "static",
-    wwwRedirect: "none",
-  });
-  await mkdir(path.join(appsDir, "www"), { recursive: true });
+  await publishSharedSubDocroot(home, botHost, user, path.join(appsDir, "www"));
   await upsertProxy(botHost, "/", `http://127.0.0.1:${httpPort}`);
   await reloadNginx(botHost, user);
   await sslIssueBestEffort(botHost, botHost);

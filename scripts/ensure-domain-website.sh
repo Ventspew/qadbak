@@ -121,6 +121,32 @@ PUB="$(website_web_root "$DOMAIN" "$USER")"
 BAK="${HOME_DIR}/backups"
 PARENT_PUB="${HOME_DIR}/public_html"
 
+# Bot / Minecraft / similar used to publish into ~/apps/*/www. Move that
+# tree into the subdomain document root so Files and nginx share one place.
+REG="${QADBAK_DIR}/data/native-domains.json"
+TYPE=""
+if [[ -f "$REG" ]] && command -v jq >/dev/null 2>&1; then
+  TYPE="$(jq -r --arg d "$DOMAIN" '.[] | select(.name==$d) | .type // "top"' "$REG" 2>/dev/null | head -1)"
+fi
+if [[ "$TYPE" == "sub" && "$PUB" == "${HOME_DIR}/apps/"*"/www" ]]; then
+  CANONICAL="${HOME_DIR}/domains/${DOMAIN}/public_html"
+  mkdir -p "$CANONICAL"
+  if [[ -d "$PUB" ]]; then
+    cp -a "${PUB}/." "$CANONICAL/" 2>/dev/null || true
+  fi
+  cfg="$(website_config_file "$DOMAIN")"
+  if [[ -f "$cfg" ]] && command -v jq >/dev/null 2>&1; then
+    tmp="$(mktemp)"
+    if jq --arg r "$CANONICAL" '.webRoot = $r' "$cfg" >"$tmp" 2>/dev/null; then
+      mv "$tmp" "$cfg"
+    else
+      rm -f "$tmp"
+    fi
+  fi
+  chown -R "${USER}:${USER}" "${HOME_DIR}/domains/${DOMAIN}" 2>/dev/null || true
+  PUB="$CANONICAL"
+fi
+
 if ! id "$USER" >/dev/null 2>&1; then
   echo "cannot ensure $DOMAIN without unix user $USER" >&2
   exit 2

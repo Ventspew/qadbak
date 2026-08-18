@@ -13,6 +13,12 @@ export function sharedSubDocroot(home: string, fqdn: string): string {
   return `${sharedSubFilesRoot(home, fqdn)}/public_html`;
 }
 
+export function isLegacyAppWww(home: string, webRoot: string): boolean {
+  const h = String(home || "").replace(/\/+$/, "");
+  const wr = String(webRoot || "").replace(/\/+$/, "");
+  return Boolean(h) && wr.startsWith(`${h}/apps/`) && wr.endsWith("/www");
+}
+
 export function isSharedUnixSubdomain(
   row: { type?: string; user?: string; parent?: string } | null | undefined,
   parentRow: { user?: string } | null | undefined,
