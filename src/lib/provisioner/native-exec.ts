@@ -88,6 +88,7 @@ function helperTimeoutMs(command: string): number {
     command === "jellyfin-install" ||
     command.startsWith("minecraft-") ||
     command.startsWith("discord-bot-") ||
+    command.startsWith("host-discord-bot-") ||
     command.startsWith("telegram-bot-")
   ) {
     return 2_700_000;

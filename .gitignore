@@ -20,6 +20,7 @@ data/discord-notify.json
 data/discord-subscribers.json
 data/discord-notify-state.json
 data/discord-bot.json
+data/host-discord-bot/
 data/cloud-credentials.json
 data/api-rate-buckets.json
 data/rate-buckets/

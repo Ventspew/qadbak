@@ -176,6 +176,15 @@ if re.search(r"^\s*HOST_DISCORD_CLIENT_ID:", text, re.M):
 elif "DISCORD_CLIENT_ID:" in text:
     text = text.replace("      DISCORD_CLIENT_ID:", line + "\n      DISCORD_CLIENT_ID:", 1)
 compose.write_text(text)
+cid_m = re.search(r'DISCORD_CLIENT_ID:\s*"([^"]*)"', text)
+cid = cid_m.group(1) if cid_m else ""
+gw = "0" if (host_id and cid == host_id) else "1"
+gwline = f'      QADBAK_GATEWAY: {json.dumps(gw)}'
+if re.search(r"^\s*QADBAK_GATEWAY:", text, re.M):
+    text = re.sub(r"^\s*QADBAK_GATEWAY:.*$", gwline, text, count=1, flags=re.M)
+elif "HOST_DISCORD_CLIENT_ID:" in text:
+    text = text.replace(line, line + "\n" + gwline, 1)
+compose.write_text(text)
 print("    HOST_DISCORD_CLIENT_ID set on", compose)
 PY
       if docker compose -f "$compose" build bot && docker compose -f "$compose" up -d; then
@@ -184,6 +193,12 @@ PY
         echo "    WARN: could not rebuild $compose" >&2
       fi
     done
+    echo "==> Host Discord command gateway (panel operator bot)"
+    if node "$ROOT/scripts/lib/ensure-host-discord-bot.mjs"; then
+      echo "    OK qadbak-discord-bot-host"
+    else
+      echo "    WARN: host discord bot gateway failed" >&2
+    fi
   fi
   if [[ -d "$ROOT/integrations/telegram-bot" ]]; then
     echo "==> Refresh Telegram bot containers"

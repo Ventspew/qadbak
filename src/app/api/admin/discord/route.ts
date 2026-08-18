@@ -66,6 +66,11 @@ export async function PATCH(request: Request) {
     const next = mergeDiscordNotifyPatch(current, await request.json());
     await saveDiscordNotifyConfig(next);
     await auditLog(session.username, "discord-notify-save");
+    try {
+      await runProvisioningHelper("host-discord-bot-ensure");
+    } catch {
+      /* docker may be unavailable in some installs */
+    }
     return jsonOk({ ok: true, ...(await publicPayload(request)) });
   } catch (err) {
     return handleApiError(err);

@@ -26,6 +26,7 @@ BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
 CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "").strip()
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "").strip()
 GUILD_INVITE = os.environ.get("DISCORD_GUILD_INVITE", "").strip()
+BIND = os.environ.get("BIND", "0.0.0.0").strip() or "0.0.0.0"
 HOST_CLIENT_ID = os.environ.get("HOST_DISCORD_CLIENT_ID", "").strip()
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me").encode()
 SUB_PATH = Path(os.environ.get("SUBSCRIBERS_PATH", "/data/discord-subscribers.json"))
@@ -118,6 +119,20 @@ def discord_enabled() -> bool:
 def uses_host_discord_app() -> bool:
     """True when this container was given the panel operator Discord application."""
     return bool(HOST_CLIENT_ID and CLIENT_ID and HOST_CLIENT_ID == CLIENT_ID)
+
+
+def gateway_wanted() -> bool:
+    raw = os.environ.get("QADBAK_GATEWAY", "1").strip().lower()
+    if raw in ("0", "false", "off", "no"):
+        return False
+    host_gw = os.environ.get("QADBAK_HOST_GATEWAY", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if uses_host_discord_app() and not host_gw:
+        return False
+    return True
 
 
 def public_invite_allowed() -> bool:
@@ -666,7 +681,7 @@ async def serve_http() -> None:
     port = int(os.environ.get("PORT", "8787"))
     runner = web.AppRunner(make_http_app(), access_log=None)
     await runner.setup()
-    await web.TCPSite(runner, "0.0.0.0", port).start()
+    await web.TCPSite(runner, BIND, port).start()
     print(
         f"discord-bot on :{port} public={PUBLIC_URL} discord={discord_enabled()} name={BOT_NAME}",
         flush=True,
@@ -747,9 +762,15 @@ def parse_prefix_command(content: str, bot_user_id: int | None) -> tuple[str, st
     return "", ""
 
 
-def start_bot(*, message_content: bool = True) -> None:
+def start_bot(*, message_content: bool | None = None) -> None:
     if not BOT_TOKEN:
         print("discord gateway off (no bot token)", flush=True)
+        return
+    if not gateway_wanted():
+        print(
+            "discord gateway off (host app is commanded from the panel process, not this page)",
+            flush=True,
+        )
         return
     try:
         import discord
@@ -759,6 +780,12 @@ def start_bot(*, message_content: bool = True) -> None:
         print(f"WARN discord.py missing: {e}", flush=True)
         return
 
+    if message_content is None:
+        message_content = os.environ.get("DISCORD_MESSAGE_CONTENT", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
     intents = discord.Intents.default()
     intents.message_content = message_content
     bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
@@ -862,6 +889,20 @@ def start_bot(*, message_content: bool = True) -> None:
                 except Exception:
                     pass
 
+    async def safe_named(interaction: discord.Interaction, name: str, extra: str = "") -> None:
+        try:
+            await handle_named(interaction, name, extra)
+        except Exception as e:
+            print(f"WARN command {name}: {e}", flush=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        f"`{name}` failed. Try `!ping` in a DM with the bot.",
+                        ephemeral=True,
+                    )
+            except Exception:
+                pass
+
     async def rebuild_tree() -> None:
         bot.tree.clear_commands(guild=None)
         names = []
@@ -934,7 +975,7 @@ def start_bot(*, message_content: bool = True) -> None:
             names.append(name)
 
             async def _cb(interaction: discord.Interaction, _n=name):
-                await handle_named(interaction, _n)
+                await safe_named(interaction, _n)
 
             bot.tree.add_command(app_commands.Command(name=name, description=desc or "Qadbak", callback=_cb))
         builtins = [
@@ -955,13 +996,23 @@ def start_bot(*, message_content: bool = True) -> None:
             names.append(bname)
 
             async def _builtin(interaction: discord.Interaction, _n=bname):
-                await handle_named(interaction, _n)
+                await safe_named(interaction, _n)
 
             bot.tree.add_command(
                 app_commands.Command(name=bname, description=bdesc, callback=_builtin)
             )
         try:
             await bot.tree.sync()
+            for guild in list(bot.guilds):
+                try:
+                    bot.tree.copy_global_to(guild=guild)
+                    await bot.tree.sync(guild=guild)
+                except Exception as ge:
+                    print(f"WARN slash guild {guild.id}: {ge}", flush=True)
+            print(
+                f"slash synced guilds={len(bot.guilds)} (commands appear under / in those servers)",
+                flush=True,
+            )
         except Exception as e:
             print(f"WARN slash sync: {e}", flush=True)
 
@@ -1004,7 +1055,15 @@ def start_bot(*, message_content: bool = True) -> None:
             message.content or "", bot.user.id if bot.user else None
         )
         if cmd:
-            payload = await command_result(cmd, extra)
+            try:
+                payload = await command_result(cmd, extra)
+            except Exception as e:
+                print(f"WARN prefix {cmd}: {e}", flush=True)
+                try:
+                    await message.channel.send(f"`!{cmd}` failed. Try `!ping`.")
+                except Exception:
+                    pass
+                return
             if payload:
                 payload = dict(payload)
                 reactions = payload.pop("poll_reactions", False)
@@ -1166,10 +1225,19 @@ def start_bot(*, message_content: bool = True) -> None:
         await rebuild_tree()
         if not reload_tasks.is_running():
             reload_tasks.start()
-        if not host_watch.is_running():
+        host_gw = os.environ.get("QADBAK_HOST_GATEWAY", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if not host_gw and not host_watch.is_running():
             host_watch.start()
+        print(
+            f"discord commands: type !ping in a DM, or /ping in a server (guilds={len(bot.guilds)})",
+            flush=True,
+        )
         if len(bot.guilds) == 0:
-            print("WARN: bot is in 0 Discord servers — invite it from Server → Discord (admin)", flush=True)
+            print("WARN: bot is in 0 Discord servers — Invite from Server → Discord", flush=True)
 
     try:
         print(f"discord gateway starting message_content={message_content}", flush=True)

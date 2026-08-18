@@ -148,6 +148,7 @@ import {
   discordBotStatus,
   discordBotSyncTasks,
 } from "./lib/provision-discord-bot.mjs";
+import { ensureHostDiscordBot } from "./lib/ensure-host-discord-bot.mjs";
 import {
   telegramBotInstall,
   telegramBotStatus,
@@ -624,6 +625,9 @@ async function main() {
       break;
     case "discord-bot-sync-tasks":
       await discordBotSyncTasks();
+      break;
+    case "host-discord-bot-ensure":
+      await ensureHostDiscordBot();
       break;
     case "telegram-bot-install":
       await telegramBotInstall(args[0], args[1]);
