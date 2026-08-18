@@ -15,9 +15,13 @@ import {
 } from "./provisioning-common.mjs";
 import { ensureDomainMailSetup, ensureNativeMailStack } from "./mail-sync.mjs";
 import { dnsAdd, ensureBindZone, locateZonePath } from "./provision-dns.mjs";
+import { pruneOrphanBindChildZones, removeBindZone } from "./bind-zone-remove.mjs";
 import { parseZone } from "./dns-zone-edit.mjs";
 import { jstep, jinfo } from "./journal-emit.mjs";
 import { chpasswdSafe } from "./chpasswd-safe.mjs";
+import { syncPhpFpmAndNginx } from "./provision-php.mjs";
+import { applyOsDiskQuota } from "./os-disk-quota.mjs";
+import { syncDovecotQuota } from "./dovecot-quota.mjs";
 
 const exec = promisify(execFile);
 
@@ -36,13 +40,6 @@ function parseOpts(extraJson) {
   } catch {
     return {};
   }
-}
-
-async function syncPhpFpmPool(user, domain) {
-  const cfg = await readDomainConfigJson(domain, "php.json", {});
-  const ver = cfg.defaultVersion || "8.2";
-  const script = path.join(QADBAK_DIR, "scripts", "apply-php-fpm-pool.sh");
-  await exec("bash", [script, user, ver, `/home/${user}`], { timeout: 120_000 });
 }
 
 async function reloadNginx(domain, user) {
@@ -142,12 +139,6 @@ export async function domainCreate(domain, pass, userOpt, extraJson) {
     jinfo(`Wrote Qadbak landing page in ${home}/public_html`);
   }
 
-  if (ownedByQadbak) {
-    await syncPhpFpmPool(user, name);
-    jstep("service-reload", `Applied PHP-FPM pool for '${user}'`, {
-      command: `bash scripts/apply-php-fpm-pool.sh ${user} 8.2 ${home}`,
-    });
-  }
   if (type === "alias" && parentUser) {
     await reloadNginx(name, parentUser);
   } else {
@@ -218,6 +209,12 @@ export async function domainCreate(domain, pass, userOpt, extraJson) {
     } else {
       jinfo(`Skipped parent-zone A for ${name} (no origin IP)`);
     }
+    try {
+      await removeBindZone(name);
+      jinfo(`Removed leftover child BIND zone for ${name} (uses parent ${parent})`);
+    } catch {
+      /* no child zone */
+    }
   }
 
   if (ownedByQadbak && type !== "alias") {
@@ -228,6 +225,16 @@ export async function domainCreate(domain, pass, userOpt, extraJson) {
     jstep("file-write", `Wrote per-domain PHP config (8.2 + FPM)`, {
       filePath: `${QADBAK_DIR}/data/domain-config/${name}/php.json`,
     });
+    try {
+      await syncPhpFpmAndNginx(name);
+      jstep("service-reload", `Applied PHP-FPM pool(s) for ${name}`, {
+        command: `php-sync-fpm ${name}`,
+      });
+    } catch (e) {
+      jinfo(
+        `WARN: PHP-FPM sync for ${name}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
   if (type !== "alias") {
@@ -333,6 +340,9 @@ export async function domainDelete(domain) {
 
   const { available, enabled } = nginxCustomerConfPaths(name);
   await exec("rm", ["-f", enabled, available]).catch(() => {});
+  await exec("rm", ["-f", `/etc/nginx/qadbak-php/${name.replace(/\./g, "_")}.conf`]).catch(
+    () => {},
+  );
   const othersShareUser = rows.some(
     (r) => r.name !== name && String(r.user) === String(user),
   );
@@ -362,5 +372,27 @@ export async function domainDelete(domain) {
   }
 
   await saveRegistry(rows.filter((r) => r.name !== name));
+  try {
+    await removeBindZone(name);
+  } catch {
+    /* */
+  }
+  try {
+    await pruneOrphanBindChildZones();
+  } catch {
+    /* */
+  }
+  if (othersShareUser) {
+    try {
+      await applyOsDiskQuota(user);
+    } catch {
+      /* */
+    }
+  }
+  try {
+    await syncDovecotQuota();
+  } catch {
+    /* */
+  }
   emit({ ok: true, domain: name, user, removedUser: true });
 }

@@ -116,6 +116,110 @@ EOF
   echo "OK — PHP ${ver} FPM pool qadbak-${user} → ${sock}"
 }
 
+php_fpm_named_socket_path() {
+  local user="$1" pool_id="$2"
+  echo "/run/php/qadbak-${user}-d-${pool_id}.sock"
+}
+
+php_fpm_named_pool_conf_path() {
+  local ver="$1" user="$2" pool_id="$3"
+  echo "/etc/php/${ver}/fpm/pool.d/qadbak-${user}-d-${pool_id}.conf"
+}
+
+# Extra directory pool (does not chown public_html / home).
+apply_php_fpm_named_pool() {
+  local user="$1"
+  local ver="${2:-}"
+  local chdir="$3"
+  local pool_id="$4"
+  local home="${5:-/home/${user}}"
+
+  if ! id "$user" &>/dev/null; then
+    echo "ERROR: unix user does not exist: $user" >&2
+    return 1
+  fi
+  if [[ ! "$pool_id" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "ERROR: invalid PHP pool id" >&2
+    return 1
+  fi
+  if [[ "$chdir" != "${home}/public_html/"* ]]; then
+    echo "ERROR: extra PHP pool chdir must be under ${home}/public_html/" >&2
+    return 1
+  fi
+
+  ver="$(php_fpm_detect_version "$ver")"
+  if [[ ! -d "/etc/php/${ver}/fpm" ]]; then
+    echo "ERROR: PHP ${ver} FPM not installed" >&2
+    return 1
+  fi
+
+  mkdir -p "$chdir" "${home}/tmp"
+  chown "${user}:${user}" "$chdir" "${home}/tmp" 2>/dev/null || true
+
+  local sock ngx_user pool_file
+  sock="$(php_fpm_named_socket_path "$user" "$pool_id")"
+  ngx_user="$(php_fpm_nginx_user)"
+  pool_file="$(php_fpm_named_pool_conf_path "$ver" "$user" "$pool_id")"
+
+  cat >"$pool_file" <<EOF
+; Qadbak per-directory PHP-FPM pool — ${user} ${pool_id}
+[qadbak-${user}-d-${pool_id}]
+user = ${user}
+group = ${user}
+listen = ${sock}
+listen.owner = ${ngx_user}
+listen.group = ${ngx_user}
+listen.mode = 0660
+
+pm = ondemand
+pm.max_children = 4
+pm.process_idle_timeout = 10s
+
+chdir = ${chdir}
+php_admin_value[open_basedir] = ${home}/:/tmp/:/var/tmp/:/usr/share/php/
+php_admin_value[upload_tmp_dir] = ${home}/tmp
+php_admin_flag[log_errors] = on
+EOF
+
+  local other ov
+  for other in /etc/php/*/fpm; do
+    [[ -d "$other" ]] || continue
+    ov="${other#/etc/php/}"
+    ov="${ov%/fpm}"
+    [[ "$ov" == "$ver" ]] && continue
+    rm -f "$(php_fpm_named_pool_conf_path "$ov" "$user" "$pool_id")" 2>/dev/null || true
+  done
+
+  systemctl enable "php${ver}-fpm" 2>/dev/null || true
+  systemctl start "php${ver}-fpm" 2>/dev/null || true
+  systemctl reload "php${ver}-fpm" 2>/dev/null || systemctl restart "php${ver}-fpm" 2>/dev/null || true
+
+  echo "OK — PHP ${ver} extra pool qadbak-${user}-d-${pool_id} → ${sock}"
+}
+
+prune_php_fpm_named_pools() {
+  local user="$1"
+  shift
+  local keep="|$(IFS='|'; echo "$*")|"
+  local pool_dir f base id ver
+  for pool_dir in /etc/php/*/fpm/pool.d; do
+    [[ -d "$pool_dir" ]] || continue
+    ver="${pool_dir#/etc/php/}"
+    ver="${ver%/fpm/pool.d}"
+    for f in "${pool_dir}/qadbak-${user}-d-"*.conf; do
+      [[ -f "$f" ]] || continue
+      base="${f##*/}"
+      id="${base#qadbak-${user}-d-}"
+      id="${id%.conf}"
+      if [[ "$keep" != *"|${id}|"* ]]; then
+        rm -f "$f"
+        rm -f "$(php_fpm_named_socket_path "$user" "$id")" 2>/dev/null || true
+        systemctl reload "php${ver}-fpm" 2>/dev/null || true
+      fi
+    done
+  done
+}
+
 remove_php_fpm_pool() {
   local user="$1"
   local removed=0
@@ -130,6 +234,12 @@ remove_php_fpm_pool() {
       ver="${ver%/fpm/pool.d}"
       systemctl reload "php${ver}-fpm" 2>/dev/null || true
     fi
+    local extra
+    for extra in "${pool_dir}/qadbak-${user}-d-"*.conf; do
+      [[ -f "$extra" ]] || continue
+      rm -f "$extra"
+      removed=1
+    done
   done
   rm -f "$(php_fpm_socket_path "$user")" 2>/dev/null || true
   if [[ "$removed" -eq 1 ]]; then

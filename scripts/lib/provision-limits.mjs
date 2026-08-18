@@ -6,6 +6,7 @@ import {
   readDomainConfigJson,
   writeDomainConfigJson,
 } from "./provisioning-common.mjs";
+import { applyOsDiskQuota } from "./os-disk-quota.mjs";
 
 export async function limitsGet(domain) {
   await resolveDomainUser(domain);
@@ -39,7 +40,10 @@ export async function limitsSet(domain, limitsJson) {
   const idx = rows.findIndex((r) => String(r.name).toLowerCase() === d);
   if (idx >= 0) {
     if (limits.disk) rows[idx].disk_limit = limits.disk;
+    else delete rows[idx].disk_limit;
     await saveRegistry(rows);
+    const unix = String(rows[idx].user || "").trim();
+    if (unix) await applyOsDiskQuota(unix);
   }
   emit({ ok: true });
 }

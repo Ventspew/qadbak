@@ -7,6 +7,7 @@ import { loadEnvLocal } from "./lib/load-env-local.mjs";
 import { assertProvisioningCommand } from "./lib/provisioning-helper-allowlist.mjs";
 import { sslList, sslIssue } from "./lib/provision-ssl.mjs";
 import { dnsGet, dnsAdd, dnsDel } from "./lib/provision-dns.mjs";
+import { pruneOrphanBindChildZones } from "./lib/bind-zone-remove.mjs";
 import {
   mailList,
   mailCreate,
@@ -79,6 +80,7 @@ import {
   phpSetDirectory,
   phpModifyIni,
   phpDeleteDirectory,
+  phpSyncFpm,
 } from "./lib/provision-php.mjs";
 import { ftpList, ftpCreate, ftpDelete, ftpPass } from "./lib/provision-ftp.mjs";
 import { limitsGet, limitsSet } from "./lib/provision-limits.mjs";
@@ -314,6 +316,9 @@ async function main() {
     case "dns-del":
       await dnsDel(args[0], parseJsonArg(1));
       break;
+    case "dns-prune-orphan-zones":
+      emit({ ok: true, ...(await pruneOrphanBindChildZones()) });
+      break;
     case "mail-list":
       await mailList(args[0]);
       break;
@@ -448,6 +453,9 @@ async function main() {
       break;
     case "php-delete-directory":
       await phpDeleteDirectory(args[0], args[1]);
+      break;
+    case "php-sync-fpm":
+      await phpSyncFpm(args[0]);
       break;
     case "ftp-list":
       await ftpList(args[0]);

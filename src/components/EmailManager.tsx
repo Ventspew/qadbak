@@ -165,7 +165,7 @@ export function EmailManager({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Quota update failed.");
       setSuccess(
-        `Panel quota for ${quotaUser} saved as ${quotaMb} MB (not enforced by Dovecot).`,
+        `Quota for ${quotaUser} set to ${quotaMb} MB (enforced by Dovecot).`,
       );
       setQuotaUser(null);
       setQuotaMb("");
@@ -190,8 +190,8 @@ export function EmailManager({
         </p>
         <h1 className="mt-2 text-2xl font-semibold text-white">Mail accounts</h1>
         <p className="mt-1 text-sm text-panel-muted">
-          Mailboxes for {domain}. Quota values are stored in the panel for
-          display — Dovecot does not reject mail when they are exceeded.
+          Mailboxes for {domain}. Quota values are enforced by Dovecot (IMAP
+          and LMTP reject mail when the mailbox is full).
           {isAdmin ? (
             <>
               {" "}
@@ -354,6 +354,9 @@ export function EmailManager({
           <h2 className="text-lg font-medium text-white">
             Mailbox quota - {quotaUser}@{domain}
           </h2>
+          <p className="mt-1 text-xs text-panel-muted">
+            Dovecot rejects IMAP and LMTP when the mailbox is over this limit.
+          </p>
           <div className="mt-4 flex max-w-md gap-2">
             <Input
               type="number"

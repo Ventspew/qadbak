@@ -48,13 +48,18 @@ for row in "${ROWS[@]}"; do
   mode="$(website_mode "$domain")"
   echo "==> $domain ($user) PHP-FPM"
   if [[ "$mode" != "static" ]]; then
-    bash "$QADBAK_DIR/scripts/apply-php-fpm-pool.sh" "$user" "${ver:-}" "/home/${user}" \
-      || echo "    WARN: pool failed for $user" >&2
+    if ! node "$QADBAK_DIR/scripts/provisioning-helper.mjs" php-sync-fpm "$domain"; then
+      echo "    WARN: php-sync-fpm failed for $domain — falling back to default pool" >&2
+      bash "$QADBAK_DIR/scripts/apply-php-fpm-pool.sh" "$user" "${ver:-}" "/home/${user}" \
+        || echo "    WARN: pool failed for $user" >&2
+      bash "$QADBAK_DIR/scripts/apply-domain-nginx.sh" "$domain" "$user" \
+        || echo "    WARN: nginx failed for $domain" >&2
+    fi
   else
     echo "    static site — skip PHP-FPM pool"
+    bash "$QADBAK_DIR/scripts/apply-domain-nginx.sh" "$domain" "$user" \
+      || echo "    WARN: nginx failed for $domain" >&2
   fi
-  bash "$QADBAK_DIR/scripts/apply-domain-nginx.sh" "$domain" "$user" \
-    || echo "    WARN: nginx failed for $domain" >&2
   count=$((count + 1))
 done
 

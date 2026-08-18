@@ -41,7 +41,7 @@ export function LimitsManager({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed.");
       setSuccess(
-        "Limits saved. Mailbox and database caps apply on create; disk and bandwidth are display-only.",
+        "Limits saved. Disk quota is applied to the unix user; mailbox/DB caps apply on create.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error.");
@@ -55,7 +55,7 @@ export function LimitsManager({
       <DomainPageHeader
         domain={domain}
         title="Limits"
-        description="Mailbox and database counts are enforced on create. Disk and bandwidth are display-only (no OS quota)."
+        description="Mailbox and database counts are enforced on create. Disk is applied as an OS user quota on /home. Bandwidth is display-only."
       />
       {error && <Alert>{error}</Alert>}
       {success && <Alert variant="success">{success}</Alert>}
@@ -67,6 +67,9 @@ export function LimitsManager({
               value={limits.disk ?? ""}
               onChange={(e) => setLimits({ ...limits, disk: e.target.value })}
             />
+            <p className="mt-1 text-xs text-panel-muted">
+              Applied as an OS quota on the unix user (setquota). Empty = unlimited.
+            </p>
           </div>
           <div>
             <Label>Bandwidth (MB)</Label>
@@ -76,6 +79,7 @@ export function LimitsManager({
                 setLimits({ ...limits, bandwidth: e.target.value })
               }
             />
+            <p className="mt-1 text-xs text-panel-muted">Display-only — not metered.</p>
           </div>
           <div>
             <Label>Mailboxes</Label>

@@ -1,6 +1,11 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { emit, fail, readDomainConfigJson, writeDomainConfigJson, QADBAK_DIR } from "./provisioning-common.mjs";
+import {
+  emit,
+  fail,
+  readDomainConfigJson,
+  writeDomainConfigJson,
+  QADBAK_DIR,
+} from "./provisioning-common.mjs";
+import { syncDovecotQuota } from "./dovecot-quota.mjs";
 
 function invoiceHtml(inv, domain) {
   const issued = new Date(inv.createdAt || Date.now()).toLocaleDateString("nl-NL");
@@ -134,7 +139,17 @@ export async function mailboxQuotaSet(domain, payloadJson) {
   const limits = data.limits && typeof data.limits === "object" ? data.limits : {};
   limits[user] = { quotaMb, updatedAt: new Date().toISOString() };
   await writeDomainConfigJson(domain, "mailbox-quotas.json", { limits });
-  emit({ ok: true, user, quotaMb });
+  try {
+    await syncDovecotQuota();
+  } catch (e) {
+    fail(
+      `Quota saved in the panel, but Dovecot rejected it: ${e instanceof Error ? e.message : String(e)}`.slice(
+        0,
+        400,
+      ),
+    );
+  }
+  emit({ ok: true, user, quotaMb, enforced: true });
 }
 
 export async function mailboxQuotasGet(domain) {

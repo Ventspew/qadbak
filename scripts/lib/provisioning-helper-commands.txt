@@ -72,6 +72,7 @@ host-discord-bot-ensure
 dns-add
 dns-del
 dns-get
+dns-prune-orphan-zones
 domain-clone
 domain-create
 domain-delete
@@ -181,6 +182,7 @@ php-directories
 php-ini
 php-modify-ini
 php-set-directory
+php-sync-fpm
 php-versions
 ping
 plan-apply

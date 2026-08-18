@@ -16,8 +16,10 @@ GEN="$LIB_DIR/generate-sudoers-domain-users.sh"
 APPLY="$(readlink -f "$QADBAK_DIR/scripts/apply-php-fpm-pool.sh")"
 REMOVE="$(readlink -f "$QADBAK_DIR/scripts/remove-php-fpm-pool.sh")"
 ALL="$(readlink -f "$QADBAK_DIR/scripts/apply-all-php-fpm-pools.sh")"
+NAMED="$(readlink -f "$QADBAK_DIR/scripts/apply-php-fpm-named-pool.sh")"
+PRUNE="$(readlink -f "$QADBAK_DIR/scripts/prune-php-fpm-named-pools.sh")"
 
-for s in "$APPLY" "$REMOVE" "$ALL"; do
+for s in "$APPLY" "$REMOVE" "$ALL" "$NAMED" "$PRUNE"; do
   [[ -f "$s" ]] || { echo "Missing $s" >&2; exit 1; }
   chmod 755 "$s"
 done

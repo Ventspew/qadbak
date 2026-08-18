@@ -173,7 +173,12 @@ write_common_locations() {
     echo "    location / { try_files \$uri \$uri/ =404; }"
   fi
   if [[ "$SITE_MODE" != "static" && "${HAS_ROOT_PROXY:-0}" != "1" ]]; then
-    nginx_php_location_lines "$USER" "$APACHE_BACKEND"
+    local php_snip="/etc/nginx/qadbak-php/${DOMAIN//./_}.conf"
+    if [[ -f "$php_snip" ]]; then
+      cat "$php_snip"
+    else
+      nginx_php_location_lines "$USER" "$APACHE_BACKEND"
+    fi
   fi
 }
 

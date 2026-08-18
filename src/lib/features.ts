@@ -187,7 +187,7 @@ export const DOMAIN_FEATURES: DomainFeature[] = [
     id: "php",
     phase: 3,
     label: "PHP",
-    description: "PHP versions per directory and php.ini",
+    description: "PHP-FPM pool per directory and php.ini",
     path: "php",
     programs: {
       admin: [
@@ -258,7 +258,7 @@ export const DOMAIN_FEATURES: DomainFeature[] = [
     id: "limits",
     phase: 4,
     label: "Limits",
-    description: "Mailbox/DB caps on create; disk is display-only",
+    description: "Mailbox/DB caps on create; disk is an OS quota",
     path: "limits",
     adminOnly: true,
     programs: {

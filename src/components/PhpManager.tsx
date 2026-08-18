@@ -68,11 +68,7 @@ export function PhpManager({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed.");
-      setSuccess(
-        dir === "public_html" || dir === "."
-          ? `PHP ${version} is now the site pool version.`
-          : `Saved ${dir} → PHP ${version} (label only; site pool is unchanged).`,
-      );
+      setSuccess(`PHP-FPM pool for ${dir} is now ${version}.`);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error.");
@@ -92,7 +88,7 @@ export function PhpManager({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Delete failed.");
-      setSuccess("PHP mapping deleted.");
+      setSuccess("PHP directory mapping and extra FPM pool removed.");
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error.");
@@ -136,7 +132,7 @@ export function PhpManager({
       <DomainPageHeader
         domain={domain}
         title="PHP"
-        description="One PHP-FPM pool per unix user — the version applies to the whole site. Extra directory rows are labels until a separate pool exists."
+        description="One PHP-FPM pool per directory. Extra folders get their own socket and nginx location."
       />
       {error && <Alert>{error}</Alert>}
       {success && <Alert variant="success">{success}</Alert>}

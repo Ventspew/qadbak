@@ -179,17 +179,43 @@ service lmtp {
 }
 
 protocol imap {
-  mail_plugins = $mail_plugins sieve
+  mail_plugins = $mail_plugins sieve imap_quota
 }
 
 protocol lmtp {
-  mail_plugins = $mail_plugins sieve
+  mail_plugins = $mail_plugins sieve quota
 }
 
 plugin {
   sieve = ~/Maildir/.dovecot.sieve
 }
 EOF
+
+QUOTA_USERS="/etc/dovecot/qadbak-quota-users"
+if [[ ! -f "$QUOTA_USERS" ]]; then
+  printf '%s\n' "# user:::::::userdb_quota_rule=*:storage=NM" >"$QUOTA_USERS"
+  chmod 640 "$QUOTA_USERS"
+fi
+cat >"/etc/dovecot/conf.d/05-qadbak-quota.conf" <<EOF
+# Qadbak — Dovecot quota plugin (limits from mailbox-quotas.json)
+mail_plugins = \$mail_plugins quota
+
+plugin {
+  quota = count:User quota
+  quota_vsizes = yes
+  quota_rule = *:storage=0
+  quota_grace = 0
+}
+
+userdb {
+  driver = passwd-file
+  args = username_format=%n ${QUOTA_USERS}
+  result_success = continue-ok
+  result_failure = continue
+  result_internalfail = continue
+}
+EOF
+rm -f /etc/dovecot/conf.d/98-qadbak-quota.conf 2>/dev/null || true
 
 MASTER="/etc/postfix/master.cf"
 if [[ -f "$MASTER" ]] && ! grep -q '^submission inet' "$MASTER" 2>/dev/null; then
