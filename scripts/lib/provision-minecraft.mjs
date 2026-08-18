@@ -307,6 +307,7 @@ function buildCompose({
   discordClientSecret,
   discordInvite,
   sessionSecret,
+  hostDiscordClientId,
 }) {
   const projects = [
     ...(pack.modrinth ? pack.modrinth.split(",") : []),
@@ -368,6 +369,7 @@ ${env.join("\n")}
       JOIN_ADDRESS: ${yamlQuote(joinAddress)}
       PACK_LABEL: ${yamlQuote(packLabel)}
       MOTD: ${yamlQuote(motd)}
+      HOST_DISCORD_CLIENT_ID: ${yamlQuote(hostDiscordClientId)}
       DISCORD_BOT_TOKEN: ${yamlQuote(discordBotToken)}
       DISCORD_CLIENT_ID: ${yamlQuote(discordClientId)}
       DISCORD_CLIENT_SECRET: ${yamlQuote(discordClientSecret)}
@@ -421,26 +423,26 @@ export async function minecraftInstall(domain, payloadJson) {
   const sessionSecret =
     existing?.sessionSecret || randomBytes(24).toString("hex");
   const panelDiscord = await loadPanelDiscordNotify();
-  const discordBotToken =
-    sanitizeSecret(payload.discordBotToken) ||
-    panelDiscord.botToken ||
-    existing?.discordBotToken ||
-    "";
-  const discordClientId =
-    sanitizeSecret(payload.discordClientId) ||
-    panelDiscord.clientId ||
-    existing?.discordClientId ||
-    "";
-  const discordClientSecret =
-    sanitizeSecret(payload.discordClientSecret) ||
-    panelDiscord.clientSecret ||
-    existing?.discordClientSecret ||
-    "";
-  const discordInvite =
-    sanitizeSecret(payload.discordInvite) ||
-    panelDiscord.invite ||
-    existing?.discordInvite ||
-    "";
+  let discordBotToken =
+    sanitizeSecret(payload.discordBotToken) || existing?.discordBotToken || "";
+  let discordClientId =
+    sanitizeSecret(payload.discordClientId) || existing?.discordClientId || "";
+  let discordClientSecret =
+    sanitizeSecret(payload.discordClientSecret) || existing?.discordClientSecret || "";
+  let discordInvite =
+    sanitizeSecret(payload.discordInvite) || existing?.discordInvite || "";
+  if (
+    (panelDiscord.clientId && discordClientId === panelDiscord.clientId) ||
+    (panelDiscord.botToken && discordBotToken === panelDiscord.botToken)
+  ) {
+    emit(
+      "WARN: refusing panel host Discord app on the public Minecraft page — use a separate Discord application.",
+    );
+    discordBotToken = "";
+    discordClientId = "";
+    discordClientSecret = "";
+    discordInvite = "";
+  }
   const motd = pack.motd;
   const join = port === 25565 ? mcHost : `${mcHost}:${port}`;
   const publicUrl = `https://${mcHost}`;
@@ -471,6 +473,7 @@ export async function minecraftInstall(domain, payloadJson) {
     discordClientSecret,
     discordInvite,
     sessionSecret,
+    hostDiscordClientId: panelDiscord.clientId || "",
   });
   assertComposePolicyYaml(compose);
   await writeFile(composePath, compose, "utf8");

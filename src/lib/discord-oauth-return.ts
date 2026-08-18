@@ -1,6 +1,8 @@
-/** After Discord OAuth, send admins back to the admin page and everyone else to /discord. */
-export function discordOauthReturnPath(
-  state: string,
-): "/admin/discord" | "/discord" {
-  return state.endsWith(".admin") ? "/admin/discord" : "/discord";
+/** Host Discord OAuth is admin-only. Public `.public` states are rejected. */
+export function isHostOperatorOAuthState(state: string): boolean {
+  return state.endsWith(".admin");
+}
+
+export function discordOauthReturnPath(_state: string): "/admin/discord" {
+  return "/admin/discord";
 }

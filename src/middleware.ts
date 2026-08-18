@@ -44,8 +44,6 @@ const PUBLIC_EXACT = new Set([
   "/api/internal/session-revocation",
   "/api/internal/discord-status",
   "/api/admin/discord/callback",
-  "/api/discord/public",
-  "/api/discord/login",
   "/auth/callback",
   "/discord",
   "/landing.css",

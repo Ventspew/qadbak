@@ -26,6 +26,7 @@ BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
 CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "").strip()
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "").strip()
 GUILD_INVITE = os.environ.get("DISCORD_GUILD_INVITE", "").strip()
+HOST_CLIENT_ID = os.environ.get("HOST_DISCORD_CLIENT_ID", "").strip()
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me").encode()
 SUB_PATH = Path(os.environ.get("SUBSCRIBERS_PATH", "/data/discord-subscribers.json"))
 TASKS_PATH = Path(os.environ.get("TASKS_PATH", "/data/tasks.json"))
@@ -114,8 +115,17 @@ def discord_enabled() -> bool:
     return bool(BOT_TOKEN and CLIENT_ID and CLIENT_SECRET)
 
 
+def uses_host_discord_app() -> bool:
+    """True when this container was given the panel operator Discord application."""
+    return bool(HOST_CLIENT_ID and CLIENT_ID and HOST_CLIENT_ID == CLIENT_ID)
+
+
+def public_invite_allowed() -> bool:
+    return discord_enabled() and not uses_host_discord_app()
+
+
 def invite_url() -> str:
-    if not CLIENT_ID:
+    if not public_invite_allowed():
         return ""
     return (
         "https://discord.com/oauth2/authorize"
@@ -425,21 +435,28 @@ def snapshot_events(prev: dict, snap: dict | None) -> list[str]:
 
 def html_page(body: str) -> bytes:
     login = ""
-    if discord_enabled():
+    invite_html = ""
+    guild = ""
+    if uses_host_discord_app():
+        body = (
+            "<p>This page cannot invite or link the <strong>panel operator bot</strong>. "
+            "Only the host admin may do that under Server → Discord.</p>"
+            "<p>Install the Discord Bot app with <em>your own</em> Discord application "
+            "to invite a bot to your server.</p>"
+            + (body or "")
+        )
+    elif discord_enabled():
         login = '<p><a class="btn" href="/login">Link Discord for DMs</a></p>'
-    invite = invite_url()
-    invite_html = (
-        f'<p><a class="btn" href="{esc(invite)}">Add this bot to your Discord server</a></p>'
-        "<p>Zonder Invite kan de bot nergens posten en geen DMs sturen.</p>"
-        if invite
-        else ""
-    )
-    guild_url = safe_invite(GUILD_INVITE)
-    guild = (
-        f'<p class="muted">Guild invite: <a href="{esc(guild_url)}">{esc(guild_url)}</a></p>'
-        if guild_url
-        else ""
-    )
+        invite = invite_url()
+        if invite:
+            invite_html = (
+                f'<p><a class="btn" href="{esc(invite)}">Add this bot to your Discord server</a></p>'
+            )
+        guild_url = safe_invite(GUILD_INVITE)
+        if guild_url:
+            guild = (
+                f'<p class="muted">Guild invite: <a href="{esc(guild_url)}">{esc(guild_url)}</a></p>'
+            )
     tasks = load_tasks().get("tasks") or []
     slashes = []
     for row in tasks:
@@ -460,6 +477,13 @@ def html_page(body: str) -> bytes:
         elif kind == "poll.create":
             slashes.append("/" + (params.get("name") or "poll"))
     slash_html = ", ".join(slashes) if slashes else "none yet — assign tasks in the Qadbak panel"
+    if uses_host_discord_app():
+        slash_html = "not published on this page"
+    intro = (
+        "<p>This is the panel operator bot page. It is not a public invite.</p>"
+        if uses_host_discord_app()
+        else "<p>Qadbak Discord bot — no-code tasks and slash commands for this domain.</p>"
+    )
     page = f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -474,7 +498,7 @@ p {{ color:#94a3b8; line-height:1.55; }}
 code {{ background:#1e293b; padding:.15rem .4rem; border-radius:.35rem; }}
 </style></head><body><main>
 <h1>{esc(BOT_NAME)}</h1>
-<p>Qadbak Discord bot — no-code tasks, host alerts, and slash commands.</p>
+{intro}
 {invite_html}
 {login}
 <p>Slash commands: {slash_html}</p>
@@ -534,6 +558,7 @@ async def handle_status(_request: web.Request) -> web.Response:
             "ok": True,
             "discord": discord_enabled(),
             "invite": invite_url() or None,
+            "hostBot": uses_host_discord_app(),
             "bot": BOT_NAME,
         }
     )
@@ -544,8 +569,13 @@ async def handle_status(_request: web.Request) -> web.Response:
 
 
 async def handle_login(_request: web.Request) -> web.Response:
-    if not discord_enabled():
-        return html_resp(html_page("<p>Discord OAuth is not configured yet.</p>"))
+    if uses_host_discord_app() or not discord_enabled():
+        return html_resp(
+            html_page(
+                "<p>Discord OAuth on this page is only for this domain's own bot, "
+                "not the panel operator bot.</p>"
+            )
+        )
     state = hashlib.sha256(os.urandom(16)).hexdigest()[:24]
     with lock:
         oauth_states[state] = time.time()
@@ -563,7 +593,7 @@ async def handle_login(_request: web.Request) -> web.Response:
 
 
 async def handle_callback(request: web.Request) -> web.Response:
-    if not discord_enabled():
+    if uses_host_discord_app() or not discord_enabled():
         return html_resp(html_page("<p>Discord is not configured.</p>"), 400)
     state = request.query.get("state", "")
     code = request.query.get("code", "")

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import fs from "fs/promises";
 import path from "path";
+import { loadDiscordNotifyConfig } from "./discord-notify";
 
 const TASKS_PATH = path.join(process.cwd(), "data", "discord-bot.json");
 const DISCORD_API = "https://discord.com/api/v10";
@@ -382,6 +383,7 @@ export async function listDiscordBotInstalls(): Promise<PublicDiscordBotInstall[
   } catch {
     return [];
   }
+  const host = await loadDiscordNotifyConfig();
   const out: PublicDiscordBotInstall[] = [];
   for (const name of names) {
     try {
@@ -390,12 +392,13 @@ export async function listDiscordBotInstalls(): Promise<PublicDiscordBotInstall[
       const subdomain = String(o.subdomain || "").trim();
       if (!subdomain) continue;
       const clientId = String(o.discordClientId || "").trim();
+      const hostApp = Boolean(host.clientId && clientId === host.clientId);
       out.push({
         parentDomain: String(o.parentDomain || name).trim(),
         subdomain,
         botName: String(o.botName || "Qadbak").trim() || "Qadbak",
         publicUrl: `https://${subdomain}/`,
-        inviteUrl: discordBotInviteUrl(clientId),
+        inviteUrl: hostApp ? "" : discordBotInviteUrl(clientId),
         botRedirectUri: `https://${subdomain}/auth/callback`,
       });
     } catch {

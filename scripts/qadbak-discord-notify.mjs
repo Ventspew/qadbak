@@ -129,37 +129,6 @@ async function loadSubscribers() {
   for (const row of normalizeUsers(await readJson(PANEL_SUBS, { users: {} }))) {
     byId.set(row.id, row);
   }
-  try {
-    const homes = await readdir("/home", { withFileTypes: true });
-    for (const ent of homes) {
-      if (!ent.isDirectory() && !ent.isSymbolicLink()) continue;
-      const file = path.join(
-        "/home",
-        ent.name,
-        "apps",
-        "minecraft",
-        "data",
-        "discord-subscribers.json",
-      );
-      const botFile = path.join(
-        "/home",
-        ent.name,
-        "apps",
-        "discord-bot",
-        "data",
-        "discord-subscribers.json",
-      );
-      for (const candidate of [file, botFile]) {
-        const data = await readJson(candidate, null);
-        if (!data) continue;
-        for (const row of normalizeUsers(data)) {
-          if (!byId.has(row.id)) byId.set(row.id, row);
-        }
-      }
-    }
-  } catch {
-    /* ignore /home permission errors */
-  }
   return [...byId.values()];
 }
 

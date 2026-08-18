@@ -44,10 +44,14 @@ describe("discord bot recipes", () => {
 });
 
 describe("discord oauth return path", () => {
-  it("sends admin OAuth back to the admin page and everyone else to /discord", async () => {
-    const { discordOauthReturnPath } = await import("./discord-oauth-return");
+  it("sends host OAuth only back to the admin page", async () => {
+    const { discordOauthReturnPath, isHostOperatorOAuthState } = await import(
+      "./discord-oauth-return"
+    );
     expect(discordOauthReturnPath("abc.admin")).toBe("/admin/discord");
-    expect(discordOauthReturnPath("abc.public")).toBe("/discord");
-    expect(discordOauthReturnPath("legacy-state")).toBe("/discord");
+    expect(discordOauthReturnPath("abc.public")).toBe("/admin/discord");
+    expect(isHostOperatorOAuthState("abc.admin")).toBe(true);
+    expect(isHostOperatorOAuthState("abc.public")).toBe(false);
+    expect(isHostOperatorOAuthState("legacy-state")).toBe(false);
   });
 });

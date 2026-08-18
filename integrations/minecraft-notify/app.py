@@ -26,6 +26,7 @@ BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
 CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "").strip()
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "").strip()
 GUILD_INVITE = os.environ.get("DISCORD_GUILD_INVITE", "").strip()
+HOST_CLIENT_ID = os.environ.get("HOST_DISCORD_CLIENT_ID", "").strip()
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me").encode()
 LOG_PATH = Path(os.environ.get("LOG_PATH", "/data/logs/latest.log"))
 SUB_PATH = Path(os.environ.get("SUBSCRIBERS_PATH", "/data/discord-subscribers.json"))
@@ -71,7 +72,11 @@ def unsign(token: str) -> str | None:
 
 
 def discord_enabled() -> bool:
-    return bool(BOT_TOKEN and CLIENT_ID and CLIENT_SECRET)
+    return bool(BOT_TOKEN and CLIENT_ID and CLIENT_SECRET) and not uses_host_discord_app()
+
+
+def uses_host_discord_app() -> bool:
+    return bool(HOST_CLIENT_ID and CLIENT_ID and HOST_CLIENT_ID == CLIENT_ID)
 
 
 def esc(value: str) -> str:
@@ -229,8 +234,8 @@ def html_page(body: str, status_note: str = "") -> bytes:
     if discord_enabled():
         login = '<p><a class="btn" href="/login">Log in with Discord</a> — get server updates in your DMs.</p>'
     invite = ""
-    if GUILD_INVITE:
-        invite = f'<p class="muted">Also join the Discord: <a href="{GUILD_INVITE}">{GUILD_INVITE}</a></p>'
+    if GUILD_INVITE and discord_enabled():
+        invite = f'<p class="muted">Also join the Discord: <a href="{esc(GUILD_INVITE)}">{esc(GUILD_INVITE)}</a></p>'
     page = f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>

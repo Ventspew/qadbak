@@ -390,7 +390,7 @@ export function AdminDiscordPage() {
           <p className="text-sm text-panel-muted">
             Bot @{bot.username}
             {bot.guilds.length === 0
-              ? " is in 0 servers — click Invite below (or open /discord on this panel)."
+              ? " is in 0 servers — click Invite below."
               : ` is in ${bot.guilds.length} server(s): ${bot.guilds.map((g) => g.name).join(", ")}`}
           </p>
         )}
@@ -452,7 +452,7 @@ export function AdminDiscordPage() {
               Administrator and User Install). Qadbak invite is guild install,{" "}
               <code>bot</code> + <code>applications.commands</code>.
             </p>
-            {[settings.redirectUri, ...installs.map((row) => row.botRedirectUri)]
+            {[settings.redirectUri]
               .filter((uri, i, all) => uri && all.indexOf(uri) === i)
               .map((uri) => (
                 <div key={uri} className="mb-2 flex flex-wrap gap-2">
@@ -496,12 +496,6 @@ export function AdminDiscordPage() {
           <Button variant="secondary" disabled={busy} onClick={() => void testDm()}>
             {testing ? "Sending…" : "Test DM"}
           </Button>
-          <a
-            href="/discord"
-            className="inline-flex items-center justify-center rounded-md border border-panel-border bg-panel-card px-4 py-2 text-sm font-medium text-panel-text hover:bg-panel-bg"
-          >
-            Public Discord page
-          </a>
         </div>
       </Card>
 
@@ -843,12 +837,10 @@ export function AdminDiscordPage() {
         <h2 className="text-lg font-medium text-white">Hosted bot</h2>
         {installs.length === 0 ? (
           <p className="text-sm text-panel-muted">
-            Slash commands stay online when you install{" "}
-            <a className="text-panel-link hover:underline" href="/admin/apps">
-              Apps → Discord Bot
-            </a>
-            . Host alerts already work from this page after you save a token and
-            link Discord.
+            Customer installs at <code>bot.&lt;domain&gt;</code> are that customer&apos;s
+            Discord application only. They must not use this host bot. Public invite
+            and Discord linking on those pages are disabled if they still have this
+            application&apos;s client ID.
           </p>
         ) : (
           <ul className="space-y-2 text-sm text-panel-muted">
@@ -870,8 +862,8 @@ export function AdminDiscordPage() {
         <h2 className="text-lg font-medium text-white">Linked subscribers</h2>
         {subscribers.length === 0 ? (
           <p className="text-sm text-panel-muted">
-            Nobody linked yet. Use Link my Discord, or have people log in at
-            bot.&lt;domain&gt;/login or mc.&lt;domain&gt;/login.
+            Nobody linked yet. Use <strong>Link my Discord</strong> on this page.
+            Customer bot and Minecraft pages never add people to this host list.
           </p>
         ) : (
           <ul className="space-y-1 text-sm text-panel-muted">

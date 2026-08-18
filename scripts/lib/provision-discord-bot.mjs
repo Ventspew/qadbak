@@ -214,6 +214,7 @@ function buildCompose({
   sessionSecret,
   statusTokenValue,
   updatesChannelId,
+  hostDiscordClientId,
 }) {
   return `services:
   bot:
@@ -227,6 +228,7 @@ function buildCompose({
     environment:
       PUBLIC_URL: ${yamlQuote(publicUrl)}
       BOT_NAME: ${yamlQuote(botName)}
+      HOST_DISCORD_CLIENT_ID: ${yamlQuote(hostDiscordClientId)}
       DISCORD_BOT_TOKEN: ${yamlQuote(discordBotToken)}
       DISCORD_CLIENT_ID: ${yamlQuote(discordClientId)}
       DISCORD_CLIENT_SECRET: ${yamlQuote(discordClientSecret)}
@@ -268,45 +270,33 @@ export async function discordBotInstall(domain, payloadJson) {
 
   const existing = await readDomainConfigJson(parent, "discord-bot.json", null);
   const sessionSecret = existing?.sessionSecret || randomBytes(24).toString("hex");
-  const reuseHost = parseBool(payload.reuseHostBot, false);
-  const panelDiscord = reuseHost ? await loadPanelDiscordNotify() : {
-    botToken: "",
-    clientId: "",
-    clientSecret: "",
-    invite: "",
-    updatesChannelId: "",
-  };
+  const panelDiscord = await loadPanelDiscordNotify();
   const discordBotToken =
-    sanitizeSecret(payload.discordBotToken) ||
-    existing?.discordBotToken ||
-    panelDiscord.botToken ||
-    "";
+    sanitizeSecret(payload.discordBotToken) || existing?.discordBotToken || "";
   const discordClientId =
-    sanitizeSecret(payload.discordClientId) ||
-    existing?.discordClientId ||
-    panelDiscord.clientId ||
-    "";
+    sanitizeSecret(payload.discordClientId) || existing?.discordClientId || "";
   const discordClientSecret =
-    sanitizeSecret(payload.discordClientSecret) ||
-    existing?.discordClientSecret ||
-    panelDiscord.clientSecret ||
-    "";
+    sanitizeSecret(payload.discordClientSecret) || existing?.discordClientSecret || "";
   const discordInvite =
-    sanitizeSecret(payload.discordInvite) ||
-    existing?.discordInvite ||
-    panelDiscord.invite ||
-    "";
+    sanitizeSecret(payload.discordInvite) || existing?.discordInvite || "";
   const updatesChannelId =
-    sanitizeSecret(payload.updatesChannelId) ||
-    existing?.updatesChannelId ||
-    panelDiscord.updatesChannelId ||
-    "";
+    sanitizeSecret(payload.updatesChannelId) || existing?.updatesChannelId || "";
 
   if (!discordBotToken || !discordClientId) {
     fail(
       "Each Discord Bot app needs its own Developer Portal application. " +
         "Paste that app's bot token and client ID (not the panel host bot). " +
         "Create one at https://discord.com/developers/applications — Bot + OAuth2.",
+    );
+  }
+  if (
+    (panelDiscord.clientId && discordClientId === panelDiscord.clientId) ||
+    (panelDiscord.botToken && discordBotToken === panelDiscord.botToken)
+  ) {
+    fail(
+      "That Discord application is the panel host bot (Server → Discord). " +
+        "Customer bots must use a different application. Create one at " +
+        "https://discord.com/developers/applications and invite that bot to YOUR server.",
     );
   }
 
@@ -332,6 +322,7 @@ export async function discordBotInstall(domain, payloadJson) {
     sessionSecret,
     statusTokenValue,
     updatesChannelId,
+    hostDiscordClientId: panelDiscord.clientId || "",
   });
   assertComposePolicyYaml(compose);
   await writeFile(composePath, compose, "utf8");

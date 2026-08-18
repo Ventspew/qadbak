@@ -10,7 +10,10 @@ import {
   upsertPanelSubscriber,
   verifyDiscordOAuthState,
 } from "@/lib/discord-notify";
-import { discordOauthReturnPath } from "@/lib/discord-oauth-return";
+import {
+  discordOauthReturnPath,
+  isHostOperatorOAuthState,
+} from "@/lib/discord-oauth-return";
 import { discordAdminRedirectUri, panelPublicOrigin } from "@/lib/panel-origin";
 
 export function applyNoStoreHeaders(res: NextResponse): NextResponse {
@@ -52,7 +55,12 @@ export async function handleDiscordAdminOAuthCallback(
 
     const jar = await cookies();
     const cookieVal = jar.get(DISCORD_OAUTH_COOKIE)?.value || "";
-    if (!code || !state || !(await verifyDiscordOAuthState(cookieVal, state))) {
+    if (
+      !code ||
+      !state ||
+      !isHostOperatorOAuthState(state) ||
+      !(await verifyDiscordOAuthState(cookieVal, state))
+    ) {
       return fail("error");
     }
     const cfg = await loadDiscordNotifyConfig();
@@ -86,7 +94,7 @@ export async function handleDiscordAdminOAuthCallback(
   } catch {
     return clearOauthCookie(
       applyNoStoreHeaders(
-        NextResponse.redirect(`${origin}/discord?discord=error`),
+        NextResponse.redirect(`${origin}/admin/discord?discord=error`),
       ),
       secure,
     );

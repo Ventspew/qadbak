@@ -1,4 +1,3 @@
-import { readdir } from "node:fs/promises";
 import fs from "fs/promises";
 import path from "path";
 import { SignJWT, jwtVerify } from "jose";
@@ -225,68 +224,16 @@ export async function upsertPanelSubscriber(user: {
   return row;
 }
 
-async function readSubscribersFile(
-  file: string,
-): Promise<DiscordSubscribersFile | null> {
-  try {
-    const raw = await fs.readFile(file, "utf8");
-    return normalizeSubscribersFile(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-}
-
-async function minecraftSubscriberPaths(): Promise<string[]> {
-  const out: string[] = [];
-  try {
-    const homes = await readdir("/home", { withFileTypes: true });
-    for (const ent of homes) {
-      if (!ent.isDirectory() && !ent.isSymbolicLink()) continue;
-      if (ent.name.startsWith(".")) continue;
-      out.push(
-        path.join("/home", ent.name, "apps", "minecraft", "data", "discord-subscribers.json"),
-      );
-      out.push(
-        path.join("/home", ent.name, "apps", "discord-bot", "data", "discord-subscribers.json"),
-      );
-    }
-  } catch {
-    /* permission / missing /home */
-  }
-  return out;
-}
-
 export async function listMergedSubscribers(): Promise<PublicDiscordSubscriber[]> {
-  const byId = new Map<string, PublicDiscordSubscriber>();
   const panel = await loadPanelSubscribers();
-  for (const row of Object.values(panel.users)) {
-    if (row.notify === false) continue;
-    byId.set(row.id, { id: row.id, username: row.username, sources: ["panel"] });
-  }
-  for (const file of await minecraftSubscriberPaths()) {
-    const data = await readSubscribersFile(file);
-    if (!data) continue;
-    for (const row of Object.values(data.users)) {
-      if (row.notify === false) continue;
-      const prev = byId.get(row.id);
-      if (prev) {
-        if (!prev.sources.includes("minecraft") && file.includes("/minecraft/")) {
-          prev.sources.push("minecraft");
-        }
-        if (!prev.sources.includes("bot") && file.includes("/discord-bot/")) {
-          prev.sources.push("bot");
-        }
-        if (prev.username === prev.id && row.username) prev.username = row.username;
-      } else {
-        byId.set(row.id, {
-          id: row.id,
-          username: row.username,
-          sources: file.includes("/discord-bot/") ? ["bot"] : ["minecraft"],
-        });
-      }
-    }
-  }
-  return [...byId.values()].sort((a, b) => a.username.localeCompare(b.username, "en"));
+  return Object.values(panel.users)
+    .filter((row) => row.notify !== false)
+    .map((row) => ({
+      id: row.id,
+      username: row.username,
+      sources: ["panel"],
+    }))
+    .sort((a, b) => a.username.localeCompare(b.username, "en"));
 }
 
 export async function sendDiscordDm(

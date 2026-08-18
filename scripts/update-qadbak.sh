@@ -160,6 +160,24 @@ if [[ "$(id -u)" -eq 0 ]] && command -v docker >/dev/null; then
       appdir="$(dirname "$compose")/app"
       mkdir -p "$appdir"
       cp -a "$ROOT/integrations/discord-bot/." "$appdir/"
+      python3 - "$ROOT" "$compose" <<'PY' || true
+import json, pathlib, re, sys
+root, compose = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+host_id = ""
+try:
+    o = json.loads((root / "data" / "discord-notify.json").read_text())
+    host_id = str(o.get("clientId") or "").strip()
+except Exception:
+    pass
+text = compose.read_text()
+line = f'      HOST_DISCORD_CLIENT_ID: {json.dumps(host_id)}'
+if re.search(r"^\s*HOST_DISCORD_CLIENT_ID:", text, re.M):
+    text = re.sub(r"^\s*HOST_DISCORD_CLIENT_ID:.*$", line, text, count=1, flags=re.M)
+elif "DISCORD_CLIENT_ID:" in text:
+    text = text.replace("      DISCORD_CLIENT_ID:", line + "\n      DISCORD_CLIENT_ID:", 1)
+compose.write_text(text)
+print("    HOST_DISCORD_CLIENT_ID set on", compose)
+PY
       if docker compose -f "$compose" build bot && docker compose -f "$compose" up -d; then
         echo "    OK $(dirname "$compose")"
       else
@@ -198,6 +216,23 @@ PY
       notifydir="$(dirname "$compose")/notify"
       [[ -d "$notifydir" ]] || continue
       cp -a "$ROOT/integrations/minecraft-notify/." "$notifydir/"
+      python3 - "$ROOT" "$compose" <<'PY' || true
+import json, pathlib, re, sys
+root, compose = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+host_id = ""
+try:
+    o = json.loads((root / "data" / "discord-notify.json").read_text())
+    host_id = str(o.get("clientId") or "").strip()
+except Exception:
+    pass
+text = compose.read_text()
+line = f'      HOST_DISCORD_CLIENT_ID: {json.dumps(host_id)}'
+if re.search(r"^\s*HOST_DISCORD_CLIENT_ID:", text, re.M):
+    text = re.sub(r"^\s*HOST_DISCORD_CLIENT_ID:.*$", line, text, count=1, flags=re.M)
+elif "DISCORD_CLIENT_ID:" in text:
+    text = text.replace("      DISCORD_CLIENT_ID:", line + "\n      DISCORD_CLIENT_ID:", 1)
+compose.write_text(text)
+PY
       if docker compose -f "$compose" build notify && docker compose -f "$compose" up -d notify; then
         echo "    OK minecraft notify $(dirname "$compose")"
       else
