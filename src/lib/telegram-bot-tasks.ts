@@ -5,6 +5,12 @@ export const TELEGRAM_BOT_TASK_TYPES = [
   "qadbak.status",
   "qadbak.help",
   "qadbak.uptime",
+  "qadbak.disk",
+  "qadbak.docker",
+  "qadbak.load",
+  "qadbak.ping",
+  "qadbak.about",
+  "qadbak.settings",
   "minecraft.status",
   "command.reply",
   "keyword.reply",
@@ -74,6 +80,12 @@ export function defaultTelegramBotTasks(): TelegramBotTask[] {
       type: "qadbak.uptime",
       params: { name: "uptime" },
     },
+    { id: "disk", enabled: true, type: "qadbak.disk", params: { name: "disk" } },
+    { id: "docker", enabled: true, type: "qadbak.docker", params: { name: "docker" } },
+    { id: "load", enabled: true, type: "qadbak.load", params: { name: "load" } },
+    { id: "ping", enabled: true, type: "qadbak.ping", params: { name: "ping" } },
+    { id: "about", enabled: true, type: "qadbak.about", params: { name: "about" } },
+    { id: "settings", enabled: true, type: "qadbak.settings", params: { name: "settings" } },
   ];
 }
 
@@ -95,6 +107,12 @@ function normalizeTask(raw: unknown): TelegramBotTask | null {
   if (type === "minecraft.status") params.name = commandName(params.name, "minecraft");
   if (type === "qadbak.help") params.name = commandName(params.name, "help");
   if (type === "qadbak.uptime") params.name = commandName(params.name, "uptime");
+  if (type === "qadbak.disk") params.name = commandName(params.name, "disk");
+  if (type === "qadbak.docker") params.name = commandName(params.name, "docker");
+  if (type === "qadbak.load") params.name = commandName(params.name, "load");
+  if (type === "qadbak.ping") params.name = commandName(params.name, "ping");
+  if (type === "qadbak.about") params.name = commandName(params.name, "about");
+  if (type === "qadbak.settings") params.name = commandName(params.name, "settings");
   if (type === "command.reply") params.name = commandName(params.name, "");
   const id =
     String(o.id ?? "").trim() ||
@@ -143,6 +161,24 @@ export function telegramCommandsFromTasks(
     } else if (task.type === "qadbak.uptime") {
       name = commandName(task.params.name, "uptime");
       description = "Bot uptime";
+    } else if (task.type === "qadbak.disk") {
+      name = commandName(task.params.name, "disk");
+      description = "Disk usage";
+    } else if (task.type === "qadbak.docker") {
+      name = commandName(task.params.name, "docker");
+      description = "Docker containers";
+    } else if (task.type === "qadbak.load") {
+      name = commandName(task.params.name, "load");
+      description = "CPU load";
+    } else if (task.type === "qadbak.ping") {
+      name = commandName(task.params.name, "ping");
+      description = "Check the bot is online";
+    } else if (task.type === "qadbak.about") {
+      name = commandName(task.params.name, "about");
+      description = "What this bot does";
+    } else if (task.type === "qadbak.settings") {
+      name = commandName(task.params.name, "settings");
+      description = "Privacy and group tips";
     } else if (task.type === "command.reply") {
       name = commandName(task.params.name, "");
       description = (task.params.text || "Custom reply").slice(0, 256);

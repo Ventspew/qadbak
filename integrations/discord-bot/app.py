@@ -120,7 +120,7 @@ def invite_url() -> str:
     return (
         "https://discord.com/oauth2/authorize"
         f"?client_id={urllib.parse.quote(CLIENT_ID)}"
-        "&permissions=85056&scope=bot%20applications.commands"
+        "&permissions=85056&integration_type=0&scope=bot%20applications.commands"
     )
 
 
@@ -314,6 +314,79 @@ def format_minecraft(snap: dict | None) -> str:
     players = mc.get("players") or []
     extra = f"\nPlayers: {', '.join(players)}" if players else "\nNo players listed."
     return f"Minecraft is **{state}**. Join: `{join}`{extra}"
+
+
+def format_disk(snap: dict | None) -> str:
+    disks = (snap or {}).get("disks") or []
+    if not disks:
+        return "No disk data yet."
+    lines = [f"`{d.get('mount')}` {d.get('usePct')}%" for d in disks[:8]]
+    return "**Disk usage**\n" + "\n".join(lines)
+
+
+def format_docker(snap: dict | None) -> str:
+    docker = (snap or {}).get("docker") or []
+    if not docker:
+        return "No Docker containers reported."
+    running = sum(1 for c in docker if c.get("state") == "running")
+    lines = [f"`{c.get('name')}` · {c.get('state')}" for c in docker[:12]]
+    return f"**Docker** {running}/{len(docker)} running\n" + "\n".join(lines)
+
+
+def format_load(snap: dict | None) -> str:
+    load = (snap or {}).get("loadAvg") or [0, 0, 0]
+    return f"**Load average** `{load[0]}` `{load[1]}` `{load[2]}`"
+
+
+def snapshot_color(snap: dict | None) -> int:
+    if not snap:
+        return 0x99AAB5
+    mem = int(snap.get("memoryUsePct") or 0)
+    disks = snap.get("disks") or []
+    disk_max = max((int(d.get("usePct") or 0) for d in disks), default=0)
+    if mem >= 90 or disk_max >= 90:
+        return 0xED4245
+    if mem >= 80 or disk_max >= 85:
+        return 0xFEE75C
+    return 0x57F287
+
+
+def status_embed(snap: dict | None, title: str = "Host status"):
+    import discord
+
+    embed = discord.Embed(
+        title=title,
+        description=(snap or {}).get("hostname") or BOT_NAME,
+        color=snapshot_color(snap),
+    )
+    if not snap:
+        embed.add_field(name="Status", value="Host snapshot not available yet.", inline=False)
+        return embed
+    load = snap.get("loadAvg") or [0, 0, 0]
+    disks = snap.get("disks") or []
+    disk_txt = ", ".join(f"{d.get('mount')} {d.get('usePct')}%" for d in disks[:4]) or "n/a"
+    docker = snap.get("docker") or []
+    running = sum(1 for c in docker if c.get("state") == "running")
+    embed.add_field(name="RAM", value=f"{snap.get('memoryUsePct', 0)}%", inline=True)
+    embed.add_field(name="Load", value=str(load[0]), inline=True)
+    embed.add_field(name="Docker", value=f"{running}/{len(docker)} up", inline=True)
+    embed.add_field(name="Disk", value=disk_txt, inline=False)
+    mc = snap.get("minecraft") or {}
+    if mc.get("installed"):
+        embed.add_field(
+            name="Minecraft",
+            value="online" if mc.get("online") else "offline",
+            inline=True,
+        )
+    embed.set_footer(text="Qadbak live snapshot")
+    return embed
+
+
+def alert_embed(text: str, *, critical: bool = False):
+    import discord
+
+    color = 0xED4245 if critical else 0xFEE75C
+    return discord.Embed(title="Qadbak alert", description=text[:4000], color=color)
 
 
 def snapshot_events(prev: dict, snap: dict | None) -> list[str]:
@@ -608,6 +681,18 @@ def slash_commands_from_loaded() -> list[str]:
             names.append("/" + slash_name(params, "help"))
         elif kind == "qadbak.uptime":
             names.append("/" + slash_name(params, "uptime"))
+        elif kind == "qadbak.disk":
+            names.append("/" + slash_name(params, "disk"))
+        elif kind == "qadbak.docker":
+            names.append("/" + slash_name(params, "docker"))
+        elif kind == "qadbak.load":
+            names.append("/" + slash_name(params, "load"))
+        elif kind == "qadbak.ping":
+            names.append("/" + slash_name(params, "ping"))
+        elif kind == "qadbak.about":
+            names.append("/" + slash_name(params, "about"))
+        elif kind == "qadbak.invite":
+            names.append("/" + slash_name(params, "invite"))
         elif kind == "slash.reply":
             n = slash_name(params, "")
             if n:
@@ -616,6 +701,9 @@ def slash_commands_from_loaded() -> list[str]:
             names.append("/" + slash_name(params, "info"))
         elif kind == "poll.create":
             names.append("/" + slash_name(params, "poll"))
+    for extra in ("/status", "/disk", "/docker", "/load", "/ping", "/uptime", "/help", "/about", "/invite", "/minecraft"):
+        if extra not in names:
+            names.append(extra)
     return names
 
 
@@ -639,13 +727,41 @@ def start_bot() -> None:
 
     async def handle_named(interaction: discord.Interaction, name: str) -> None:
         snap = await asyncio.to_thread(host_snapshot)
+        builtins = {
+            "status": lambda: interaction.response.send_message(embed=status_embed(snap), ephemeral=True),
+            "disk": lambda: interaction.response.send_message(format_disk(snap), ephemeral=True),
+            "docker": lambda: interaction.response.send_message(format_docker(snap), ephemeral=True),
+            "load": lambda: interaction.response.send_message(format_load(snap), ephemeral=True),
+            "ping": lambda: interaction.response.send_message("Pong — Qadbak bot is online.", ephemeral=True),
+            "about": lambda: interaction.response.send_message(
+                f"**{BOT_NAME}** is the Qadbak Discord bot for this host.\n"
+                "Use slash commands for live status. Channel alerts cover disk, RAM, Docker and Minecraft.",
+                ephemeral=True,
+            ),
+            "invite": lambda: interaction.response.send_message(
+                invite_url() or "Save a Discord application client ID in Qadbak first.",
+                ephemeral=True,
+            ),
+            "uptime": lambda: interaction.response.send_message(
+                embed=status_embed(snap, title=f"Uptime ≈ {max(1, int((time.time() - BOT_STARTED) / 60))} min"),
+                ephemeral=True,
+            ),
+            "help": lambda: interaction.response.send_message(
+                "Commands: " + ", ".join(f"`{n}`" for n in slash_commands_from_loaded() or ["/status"]),
+                ephemeral=True,
+            ),
+            "minecraft": lambda: interaction.response.send_message(format_minecraft(snap), ephemeral=True),
+        }
+        if name in builtins:
+            await builtins[name]()
+            return
         for row in load_tasks().get("tasks") or []:
             if row.get("enabled") is False:
                 continue
             kind = str(row.get("type") or "")
             params = row.get("params") or {}
             if kind == "qadbak.status" and slash_name(params, "status") == name:
-                await interaction.response.send_message(format_status(snap), ephemeral=True)
+                await interaction.response.send_message(embed=status_embed(snap), ephemeral=True)
                 return
             if kind == "minecraft.status" and slash_name(params, "minecraft") == name:
                 await interaction.response.send_message(format_minecraft(snap), ephemeral=True)
@@ -657,17 +773,34 @@ def start_bot() -> None:
             if kind == "qadbak.help" and slash_name(params, "help") == name:
                 listed = slash_commands_from_loaded()
                 await interaction.response.send_message(
-                    "Commands: " + (", ".join(listed) if listed else "none yet"),
+                    "Commands: " + (", ".join(f"`{n}`" for n in listed) if listed else "none yet"),
                     ephemeral=True,
                 )
                 return
             if kind == "qadbak.uptime" and slash_name(params, "uptime") == name:
                 mins = max(1, int((time.time() - BOT_STARTED) / 60))
-                extra = format_status(snap)
                 await interaction.response.send_message(
-                    f"Bot uptime ≈ {mins} min.\n{extra}",
+                    embed=status_embed(snap, title=f"Uptime ≈ {mins} min"),
                     ephemeral=True,
                 )
+                return
+            if kind == "qadbak.disk" and slash_name(params, "disk") == name:
+                await interaction.response.send_message(format_disk(snap), ephemeral=True)
+                return
+            if kind == "qadbak.docker" and slash_name(params, "docker") == name:
+                await interaction.response.send_message(format_docker(snap), ephemeral=True)
+                return
+            if kind == "qadbak.load" and slash_name(params, "load") == name:
+                await interaction.response.send_message(format_load(snap), ephemeral=True)
+                return
+            if kind == "qadbak.ping" and slash_name(params, "ping") == name:
+                await interaction.response.send_message("Pong — Qadbak bot is online.", ephemeral=True)
+                return
+            if kind == "qadbak.about" and slash_name(params, "about") == name:
+                await builtins["about"]()
+                return
+            if kind == "qadbak.invite" and slash_name(params, "invite") == name:
+                await builtins["invite"]()
                 return
             if kind == "slash.embed" and slash_name(params, "info") == name:
                 title = str(params.get("title") or BOT_NAME)[:256]
@@ -704,6 +837,24 @@ def start_bot() -> None:
             elif kind == "qadbak.uptime":
                 name = slash_name(params, "uptime")
                 desc = str(params.get("description") or "Bot and host uptime")[:100]
+            elif kind == "qadbak.disk":
+                name = slash_name(params, "disk")
+                desc = str(params.get("description") or "Disk usage per mount")[:100]
+            elif kind == "qadbak.docker":
+                name = slash_name(params, "docker")
+                desc = str(params.get("description") or "Docker container states")[:100]
+            elif kind == "qadbak.load":
+                name = slash_name(params, "load")
+                desc = str(params.get("description") or "CPU load averages")[:100]
+            elif kind == "qadbak.ping":
+                name = slash_name(params, "ping")
+                desc = str(params.get("description") or "Check that the bot is online")[:100]
+            elif kind == "qadbak.about":
+                name = slash_name(params, "about")
+                desc = str(params.get("description") or "What this bot does")[:100]
+            elif kind == "qadbak.invite":
+                name = slash_name(params, "invite")
+                desc = str(params.get("description") or "Invite this bot to a server")[:100]
             elif kind == "slash.embed":
                 name = slash_name(params, "info")
                 desc = str(params.get("description") or params.get("title") or "Embed reply")[:100]
@@ -736,6 +887,29 @@ def start_bot() -> None:
                 await handle_named(interaction, _n)
 
             bot.tree.add_command(app_commands.Command(name=name, description=desc or "Qadbak", callback=_cb))
+        builtins = [
+            ("status", "RAM, disk, load, Docker"),
+            ("disk", "Disk usage per mount"),
+            ("docker", "Docker container states"),
+            ("load", "CPU load averages"),
+            ("ping", "Check that the bot is online"),
+            ("uptime", "Bot and host uptime"),
+            ("help", "List slash commands"),
+            ("about", "What this bot does"),
+            ("invite", "Invite this bot to a server"),
+            ("minecraft", "Minecraft server status"),
+        ]
+        for bname, bdesc in builtins:
+            if bname in names:
+                continue
+            names.append(bname)
+
+            async def _builtin(interaction: discord.Interaction, _n=bname):
+                await handle_named(interaction, _n)
+
+            bot.tree.add_command(
+                app_commands.Command(name=bname, description=bdesc, callback=_builtin)
+            )
         try:
             await bot.tree.sync()
         except Exception as e:
@@ -830,7 +1004,7 @@ def start_bot() -> None:
                     continue
         return found
 
-    async def post_update(text: str) -> bool:
+    async def post_update(text: str | None = None, *, embed=None) -> bool:
         channels = await writable_text_channels()
         if not channels:
             print(
@@ -838,10 +1012,21 @@ def start_bot() -> None:
                 flush=True,
             )
             return False
+        payload = {}
+        if embed is not None:
+            payload["embed"] = embed
+        elif text:
+            critical = any(
+                w in text.lower()
+                for w in ("exited", "dead", "disk", "ram at", "offline")
+            )
+            payload["embed"] = alert_embed(text, critical=critical)
+        else:
+            return False
         ok = False
         for channel in channels:
             try:
-                await channel.send(text[:1900])
+                await channel.send(**payload)
                 ok = True
                 break
             except Exception as e:
@@ -856,15 +1041,29 @@ def start_bot() -> None:
         now = time.time()
         snap = await asyncio.to_thread(host_snapshot)
         msgs: list[str] = []
+        posted_any = False
+        digest_due = False
         if alerts_enabled():
-            if not state.get("helloSent"):
-                msgs.append(
-                    f"[Qadbak] **{BOT_NAME}** stuurt hier live updates: status, Docker, Minecraft, installs."
-                )
             last = float(state.get("digestAt") or 0)
             if not last or now - last >= DIGEST_SEC:
-                msgs.append("[Qadbak] " + format_status(snap).replace("\n", " · "))
+                digest_due = True
             msgs.extend(snapshot_events(state, snap))
+            if not state.get("helloSent"):
+                hello = discord.Embed(
+                    title=f"{BOT_NAME} is watching this host",
+                    description=(
+                        "Live alerts for disk, RAM, Docker and Minecraft. "
+                        "Try `/status` `/disk` `/docker` `/help`."
+                    ),
+                    color=0x5865F2,
+                )
+                if await post_update(embed=hello):
+                    state["helloSent"] = True
+                    posted_any = True
+        if digest_due and alerts_enabled():
+            if await post_update(embed=status_embed(snap, title="Host digest")):
+                posted_any = True
+                state["digestAt"] = now
         for row in enabled_tasks("scheduled.post"):
             text = str((row.get("params") or {}).get("text") or "").strip()
             if not text:
@@ -876,18 +1075,11 @@ def start_bot() -> None:
             if not last_s or now - last_s >= mins * 60:
                 msgs.append(text[:1900])
                 state[key] = now
-        posted_any = False
         for msg in msgs[:6]:
             if await post_update(msg):
                 posted_any = True
             await asyncio.sleep(0.4)
         if posted_any:
-            if alerts_enabled() and not state.get("helloSent"):
-                state["helloSent"] = True
-            if alerts_enabled():
-                last = float(state.get("digestAt") or 0)
-                if not last or now - last >= DIGEST_SEC:
-                    state["digestAt"] = now
             save_json(WATCH_PATH, state)
 
     @bot.event
@@ -907,10 +1099,6 @@ def start_bot() -> None:
             host_watch.start()
         if len(bot.guilds) == 0:
             print("WARN: bot is in 0 Discord servers — click Invite on the public page", flush=True)
-            return
-        await post_update(
-            f"[Qadbak] **{BOT_NAME}** is online. Je krijgt hier status, Docker en server-updates."
-        )
 
     try:
         bot.run(BOT_TOKEN)

@@ -25,6 +25,12 @@ type Payload = {
 const TASK_TYPES: Array<{ value: Task["type"]; label: string; hint: string }> = [
   { value: "qadbak.alerts", label: "Host alerts", hint: "Disk, RAM, load, Docker in this chat" },
   { value: "qadbak.status", label: "/status", hint: "Reply with disk, RAM, load, Docker" },
+  { value: "qadbak.disk", label: "/disk", hint: "Disk usage per mount" },
+  { value: "qadbak.docker", label: "/docker", hint: "Container states" },
+  { value: "qadbak.load", label: "/load", hint: "CPU load averages" },
+  { value: "qadbak.ping", label: "/ping", hint: "Bot online check" },
+  { value: "qadbak.about", label: "/about", hint: "What this bot does" },
+  { value: "qadbak.settings", label: "/settings", hint: "Telegram privacy mode (official rules)" },
   { value: "qadbak.help", label: "/help", hint: "Lists enabled commands" },
   { value: "qadbak.uptime", label: "/uptime", hint: "How long the bot has been running" },
   { value: "minecraft.status", label: "/minecraft", hint: "Online/offline if Minecraft is installed" },
@@ -246,6 +252,12 @@ export function TelegramBotManager({
                   task.type === "minecraft.status" ||
                   task.type === "qadbak.help" ||
                   task.type === "qadbak.uptime" ||
+                  task.type === "qadbak.disk" ||
+                  task.type === "qadbak.docker" ||
+                  task.type === "qadbak.load" ||
+                  task.type === "qadbak.ping" ||
+                  task.type === "qadbak.about" ||
+                  task.type === "qadbak.settings" ||
                   task.type === "command.reply") && (
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div>

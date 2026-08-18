@@ -119,6 +119,12 @@ const TELEGRAM_TASK_TYPES = new Set([
   "qadbak.status",
   "qadbak.help",
   "qadbak.uptime",
+  "qadbak.disk",
+  "qadbak.docker",
+  "qadbak.load",
+  "qadbak.ping",
+  "qadbak.about",
+  "qadbak.settings",
   "minecraft.status",
   "command.reply",
   "keyword.reply",
@@ -144,6 +150,12 @@ function defaultTasks(botName) {
       { id: "minecraft", enabled: true, type: "minecraft.status", params: { name: "minecraft" } },
       { id: "help", enabled: true, type: "qadbak.help", params: { name: "help" } },
       { id: "uptime", enabled: true, type: "qadbak.uptime", params: { name: "uptime" } },
+      { id: "disk", enabled: true, type: "qadbak.disk", params: { name: "disk" } },
+      { id: "docker", enabled: true, type: "qadbak.docker", params: { name: "docker" } },
+      { id: "load", enabled: true, type: "qadbak.load", params: { name: "load" } },
+      { id: "ping", enabled: true, type: "qadbak.ping", params: { name: "ping" } },
+      { id: "about", enabled: true, type: "qadbak.about", params: { name: "about" } },
+      { id: "settings", enabled: true, type: "qadbak.settings", params: { name: "settings" } },
     ],
   };
 }
@@ -201,6 +213,24 @@ function commandsFromRecipes(recipes) {
     } else if (task.type === "qadbak.uptime") {
       name = commandName(task.params?.name, "uptime");
       description = "Bot uptime";
+    } else if (task.type === "qadbak.disk") {
+      name = commandName(task.params?.name, "disk");
+      description = "Disk usage";
+    } else if (task.type === "qadbak.docker") {
+      name = commandName(task.params?.name, "docker");
+      description = "Docker containers";
+    } else if (task.type === "qadbak.load") {
+      name = commandName(task.params?.name, "load");
+      description = "CPU load";
+    } else if (task.type === "qadbak.ping") {
+      name = commandName(task.params?.name, "ping");
+      description = "Check the bot is online";
+    } else if (task.type === "qadbak.about") {
+      name = commandName(task.params?.name, "about");
+      description = "What this bot does";
+    } else if (task.type === "qadbak.settings") {
+      name = commandName(task.params?.name, "settings");
+      description = "Privacy and group tips";
     } else if (task.type === "command.reply") {
       name = commandName(task.params?.name, "");
       description = String(task.params?.text || "Custom reply").slice(0, 256);

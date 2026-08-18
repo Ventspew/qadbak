@@ -39,7 +39,13 @@ type BotPresence = {
 
 const TASK_TYPES: Array<{ value: string; label: string; hint: string }> = [
   { value: "qadbak.alerts", label: "Qadbak alerts (channel)", hint: "Disk, RAM, load, nginx/pm2, Docker, installs" },
-  { value: "qadbak.status", label: "Slash /status", hint: "Reply with disk, RAM, load, Docker" },
+  { value: "qadbak.status", label: "Slash /status", hint: "RAM, disk, load, Docker as an embed" },
+  { value: "qadbak.disk", label: "Slash /disk", hint: "Disk usage per mount" },
+  { value: "qadbak.docker", label: "Slash /docker", hint: "Container states" },
+  { value: "qadbak.load", label: "Slash /load", hint: "CPU load averages" },
+  { value: "qadbak.ping", label: "Slash /ping", hint: "Bot online check" },
+  { value: "qadbak.about", label: "Slash /about", hint: "What this bot does" },
+  { value: "qadbak.invite", label: "Slash /invite", hint: "Invite URL for this bot" },
   { value: "qadbak.help", label: "Slash /help", hint: "Lists enabled commands" },
   { value: "qadbak.uptime", label: "Slash /uptime", hint: "Bot uptime plus host snapshot" },
   { value: "minecraft.status", label: "Slash /minecraft", hint: "Online/offline if Minecraft is installed" },
@@ -561,6 +567,12 @@ export function AdminDiscordPage() {
                 task.type === "minecraft.status" ||
                 task.type === "qadbak.help" ||
                 task.type === "qadbak.uptime" ||
+                task.type === "qadbak.disk" ||
+                task.type === "qadbak.docker" ||
+                task.type === "qadbak.load" ||
+                task.type === "qadbak.ping" ||
+                task.type === "qadbak.about" ||
+                task.type === "qadbak.invite" ||
                 task.type === "slash.reply" ||
                 task.type === "slash.embed" ||
                 task.type === "poll.create") && (

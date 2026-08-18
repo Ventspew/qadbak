@@ -12,7 +12,7 @@ describe("telegram bot recipes", () => {
     expect(recipes.tasks.some((t) => t.type === "qadbak.alerts" && t.enabled)).toBe(true);
     expect(recipes.tasks.some((t) => t.type === "qadbak.status")).toBe(true);
     expect(recipes.tasks.some((t) => t.type === "qadbak.help")).toBe(true);
-    expect(recipes.tasks.some((t) => t.type === "qadbak.uptime")).toBe(true);
+    expect(recipes.tasks.some((t) => t.type === "qadbak.ping")).toBe(true);
   });
 
   it("drops Discord-only types and sanitizes command names", () => {

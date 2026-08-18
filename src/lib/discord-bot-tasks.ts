@@ -12,6 +12,12 @@ export const DISCORD_BOT_TASK_TYPES = [
   "qadbak.status",
   "qadbak.help",
   "qadbak.uptime",
+  "qadbak.disk",
+  "qadbak.docker",
+  "qadbak.load",
+  "qadbak.ping",
+  "qadbak.about",
+  "qadbak.invite",
   "minecraft.status",
   "slash.reply",
   "slash.embed",
@@ -73,7 +79,43 @@ export function defaultDiscordBotTasks(): DiscordBotTask[] {
       id: "status",
       enabled: true,
       type: "qadbak.status",
-      params: { name: "status", description: "Qadbak server status" },
+      params: { name: "status", description: "RAM, disk, load, Docker" },
+    },
+    {
+      id: "disk",
+      enabled: true,
+      type: "qadbak.disk",
+      params: { name: "disk", description: "Disk usage per mount" },
+    },
+    {
+      id: "docker",
+      enabled: true,
+      type: "qadbak.docker",
+      params: { name: "docker", description: "Docker container states" },
+    },
+    {
+      id: "load",
+      enabled: true,
+      type: "qadbak.load",
+      params: { name: "load", description: "CPU load averages" },
+    },
+    {
+      id: "ping",
+      enabled: true,
+      type: "qadbak.ping",
+      params: { name: "ping", description: "Check that the bot is online" },
+    },
+    {
+      id: "about",
+      enabled: true,
+      type: "qadbak.about",
+      params: { name: "about", description: "What this bot does" },
+    },
+    {
+      id: "invite",
+      enabled: true,
+      type: "qadbak.invite",
+      params: { name: "invite", description: "Invite this bot to a server" },
     },
     {
       id: "minecraft",
@@ -94,6 +136,13 @@ export function defaultDiscordBotTasks(): DiscordBotTask[] {
       params: { name: "uptime", description: "Bot and host uptime" },
     },
   ];
+}
+
+export function mergeBuiltinDiscordTasks(recipes: DiscordBotRecipes): DiscordBotRecipes {
+  const have = new Set(recipes.tasks.map((t) => t.type));
+  const extra = defaultDiscordBotTasks().filter((t) => !have.has(t.type));
+  if (extra.length === 0) return recipes;
+  return { ...recipes, tasks: [...recipes.tasks, ...extra] };
 }
 
 function normalizeTask(raw: unknown): DiscordBotTask | null {
@@ -134,14 +183,14 @@ export function normalizeDiscordBotRecipes(input: unknown): DiscordBotRecipes {
 export async function loadDiscordBotRecipes(): Promise<DiscordBotRecipes> {
   try {
     const raw = await fs.readFile(TASKS_PATH, "utf8");
-    return normalizeDiscordBotRecipes(JSON.parse(raw));
+    return mergeBuiltinDiscordTasks(normalizeDiscordBotRecipes(JSON.parse(raw)));
   } catch {
     return { botName: "Qadbak", tasks: defaultDiscordBotTasks() };
   }
 }
 
 export async function saveDiscordBotRecipes(recipes: DiscordBotRecipes): Promise<void> {
-  const normalized = normalizeDiscordBotRecipes(recipes);
+  const normalized = mergeBuiltinDiscordTasks(normalizeDiscordBotRecipes(recipes));
   await fs.mkdir(path.dirname(TASKS_PATH), { recursive: true });
   await fs.writeFile(TASKS_PATH, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
 }
@@ -173,6 +222,24 @@ export function slashCommandsFromTasks(
     } else if (task.type === "qadbak.uptime") {
       name = slashName(task.params.name, "uptime");
       description = (task.params.description || "Bot and host uptime").slice(0, 100);
+    } else if (task.type === "qadbak.disk") {
+      name = slashName(task.params.name, "disk");
+      description = (task.params.description || "Disk usage per mount").slice(0, 100);
+    } else if (task.type === "qadbak.docker") {
+      name = slashName(task.params.name, "docker");
+      description = (task.params.description || "Docker container states").slice(0, 100);
+    } else if (task.type === "qadbak.load") {
+      name = slashName(task.params.name, "load");
+      description = (task.params.description || "CPU load averages").slice(0, 100);
+    } else if (task.type === "qadbak.ping") {
+      name = slashName(task.params.name, "ping");
+      description = (task.params.description || "Check that the bot is online").slice(0, 100);
+    } else if (task.type === "qadbak.about") {
+      name = slashName(task.params.name, "about");
+      description = (task.params.description || "What this bot does").slice(0, 100);
+    } else if (task.type === "qadbak.invite") {
+      name = slashName(task.params.name, "invite");
+      description = (task.params.description || "Invite this bot to a server").slice(0, 100);
     } else if (task.type === "slash.reply") {
       name = slashName(task.params.name, "");
       description = (task.params.description || task.params.text || "Canned reply").slice(0, 100);

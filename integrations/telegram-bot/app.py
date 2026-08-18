@@ -84,11 +84,20 @@ def listed_commands() -> str:
         ("qadbak.status", "status"),
         ("qadbak.help", "help"),
         ("qadbak.uptime", "uptime"),
+        ("qadbak.disk", "disk"),
+        ("qadbak.docker", "docker"),
+        ("qadbak.load", "load"),
+        ("qadbak.ping", "ping"),
+        ("qadbak.about", "about"),
+        ("qadbak.settings", "settings"),
         ("minecraft.status", "minecraft"),
     ]
     for kind, fallback in mapping:
         for row in enabled_tasks(kind):
             names.append("/" + command_name(row.get("params"), fallback))
+    for extra in ("/help", "/settings", "/status", "/disk", "/docker", "/ping", "/uptime"):
+        if extra not in names:
+            names.append(extra)
     for row in enabled_tasks("command.reply"):
         name = command_name(row.get("params"), "")
         if name:
@@ -98,6 +107,29 @@ def listed_commands() -> str:
         if n not in seen:
             seen.append(n)
     return " ".join(seen)
+
+
+def telegram_command_menu() -> list[dict]:
+    out = [{"command": "start", "description": "Link this chat"}]
+    used = {"start"}
+    mapping = [
+        ("help", "What this bot can do"),
+        ("settings", "Privacy and group tips"),
+        ("status", "RAM, disk, load, Docker"),
+        ("disk", "Disk usage"),
+        ("docker", "Docker containers"),
+        ("load", "CPU load"),
+        ("ping", "Check the bot is online"),
+        ("uptime", "Bot uptime"),
+        ("about", "About this bot"),
+        ("minecraft", "Minecraft status"),
+    ]
+    for command, description in mapping:
+        if command in used:
+            continue
+        used.add(command)
+        out.append({"command": command, "description": description[:256]})
+    return out[:100]
 
 
 def esc(value: str) -> str:
@@ -252,7 +284,7 @@ def start_bot() -> None:
         )
         return
     try:
-        from telegram import Update
+        from telegram import BotCommand, Update
         from telegram.ext import (
             Application,
             ChatMemberHandler,
@@ -270,7 +302,7 @@ def start_bot() -> None:
     # the gateway thread, so /start never reached Telegram.
     async def post_init(application: Application) -> None:
         try:
-            await application.bot.delete_webhook(drop_pending_updates=True)
+            await application.bot.delete_webhook(drop_pending_updates=False)
             me = await application.bot.get_me()
             GATEWAY["ready"] = True
             GATEWAY["username"] = str(me.username or "")
@@ -278,6 +310,16 @@ def start_bot() -> None:
                 f"telegram gateway ready as @{me.username} id={me.id}",
                 flush=True,
             )
+            try:
+                await application.bot.set_my_commands(
+                    [BotCommand(c["command"], c["description"]) for c in telegram_command_menu()]
+                )
+                await application.bot.set_my_description(
+                    "Qadbak host bot. Private chat: /start. In a group use /status@botname "
+                    "(privacy mode hides other messages unless you disable it in BotFather)."
+                )
+            except Exception as e:
+                print(f"WARN setMyCommands: {e}", flush=True)
         except Exception as e:
             print(f"WARN telegram getMe: {e}", flush=True)
         if application.job_queue:
@@ -324,27 +366,94 @@ def start_bot() -> None:
                 await remember(update)
             except Exception as e:
                 print(f"WARN remember: {e}", flush=True)
-            await update.message.reply_text(f"Linked to {BOT_NAME}. Try {listed_commands()}.")
+            uname = str(GATEWAY.get("username") or "this bot")
+            await update.message.reply_html(
+                f"Linked to <b>{esc(BOT_NAME)}</b>.\n"
+                f"Private chat is the right place for /start.\n"
+                f"In a group, Telegram privacy mode only delivers <code>/command@{esc(uname)}</code> "
+                f"or replies to the bot.\n"
+                f"Try {esc(listed_commands())}."
+            )
             return
-        for row in enabled_tasks("qadbak.help"):
-            if command_name(row.get("params"), "help") == cmd:
-                await update.message.reply_text(listed_commands())
-                return
-        for row in enabled_tasks("qadbak.status"):
-            if command_name(row.get("params"), "status") == cmd:
-                snap = await asyncio.to_thread(host_snapshot)
-                await update.message.reply_text(format_status(snap))
-                return
+        if cmd in ("help",) or any(
+            command_name(row.get("params"), "help") == cmd for row in enabled_tasks("qadbak.help")
+        ):
+            await update.message.reply_text(listed_commands())
+            return
+        if cmd in ("settings",) or any(
+            command_name(row.get("params"), "settings") == cmd for row in enabled_tasks("qadbak.settings")
+        ):
+            await update.message.reply_html(
+                "<b>Telegram group privacy</b> (official Bot API):\n"
+                "By default a bot in a group only sees commands meant for it, "
+                "replies to its messages, and /start if it was the last bot to speak.\n"
+                "Keyword replies work in a private chat. For all group messages use "
+                "BotFather → /setprivacy → Disable, then re-add the bot to the group.\n"
+                "Usernames must end with <code>bot</code>."
+            )
+            return
+        if cmd in ("ping",) or any(
+            command_name(row.get("params"), "ping") == cmd for row in enabled_tasks("qadbak.ping")
+        ):
+            await update.message.reply_text("Pong — Qadbak bot is online.")
+            return
+        if cmd in ("about",) or any(
+            command_name(row.get("params"), "about") == cmd for row in enabled_tasks("qadbak.about")
+        ):
+            await update.message.reply_text(
+                f"{BOT_NAME} reports this Qadbak host: status, disk, Docker, Minecraft."
+            )
+            return
+        if cmd in ("status",) or any(
+            command_name(row.get("params"), "status") == cmd for row in enabled_tasks("qadbak.status")
+        ):
+            snap = await asyncio.to_thread(host_snapshot)
+            await update.message.reply_text(format_status(snap))
+            return
+        if cmd in ("disk",) or any(
+            command_name(row.get("params"), "disk") == cmd for row in enabled_tasks("qadbak.disk")
+        ):
+            snap = await asyncio.to_thread(host_snapshot)
+            disks = (snap or {}).get("disks") or []
+            txt = "\n".join(f"{d.get('mount')} {d.get('usePct')}%" for d in disks[:8]) or "No disk data."
+            await update.message.reply_text(txt)
+            return
+        if cmd in ("docker",) or any(
+            command_name(row.get("params"), "docker") == cmd for row in enabled_tasks("qadbak.docker")
+        ):
+            snap = await asyncio.to_thread(host_snapshot)
+            docker = (snap or {}).get("docker") or []
+            running = sum(1 for c in docker if c.get("state") == "running")
+            lines = [f"{c.get('name')} {c.get('state')}" for c in docker[:12]]
+            await update.message.reply_text(
+                f"{running}/{len(docker)} running\n" + ("\n".join(lines) if lines else "No containers.")
+            )
+            return
+        if cmd in ("load",) or any(
+            command_name(row.get("params"), "load") == cmd for row in enabled_tasks("qadbak.load")
+        ):
+            snap = await asyncio.to_thread(host_snapshot)
+            load = (snap or {}).get("loadAvg") or [0, 0, 0]
+            await update.message.reply_text(f"Load {load[0]} {load[1]} {load[2]}")
+            return
         for row in enabled_tasks("minecraft.status"):
             if command_name(row.get("params"), "minecraft") == cmd:
                 snap = await asyncio.to_thread(host_snapshot)
                 await update.message.reply_text(format_minecraft(snap))
                 return
+        if cmd == "minecraft":
+            snap = await asyncio.to_thread(host_snapshot)
+            await update.message.reply_text(format_minecraft(snap))
+            return
         for row in enabled_tasks("qadbak.uptime"):
             if command_name(row.get("params"), "uptime") == cmd:
                 mins = max(1, int((time.time() - BOT_STARTED) / 60))
                 await update.message.reply_text(f"Bot uptime ≈ {mins} min.")
                 return
+        if cmd == "uptime":
+            mins = max(1, int((time.time() - BOT_STARTED) / 60))
+            await update.message.reply_text(f"Bot uptime ≈ {mins} min.")
+            return
         for row in enabled_tasks("command.reply"):
             name = command_name(row.get("params"), "")
             text = str((row.get("params") or {}).get("text") or "").strip()
@@ -367,6 +476,26 @@ def start_bot() -> None:
                 keyword_cooldown[key] = now
                 await update.message.reply_text(reply[:1900])
                 return
+
+    async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        mcm = update.my_chat_member
+        if mcm is None:
+            return
+        new_s = mcm.new_chat_member.status
+        if new_s not in ("member", "administrator"):
+            return
+        uname = str(GATEWAY.get("username") or "bot")
+        try:
+            await context.bot.send_message(
+                chat_id=mcm.chat.id,
+                text=(
+                    f"{BOT_NAME} is online. In this group use /status@{uname} "
+                    "(Telegram privacy hides other messages). "
+                    "For /start, open a private chat with the bot."
+                )[:1900],
+            )
+        except Exception as e:
+            print(f"WARN group intro: {e}", flush=True)
 
     async def on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         rows = enabled_tasks("welcome")
@@ -432,17 +561,18 @@ def start_bot() -> None:
             state["scheduled"] = scheduled
             save_json(WATCH_PATH, state)
 
-    app.add_handler(CommandHandler("start", on_command))
+    app.add_handler(CommandHandler(["start", "help", "settings", "status", "ping"], on_command))
     app.add_handler(MessageHandler(filters.COMMAND, on_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     try:
+        app.add_handler(ChatMemberHandler(on_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
         app.add_handler(ChatMemberHandler(on_chat_member, ChatMemberHandler.CHAT_MEMBER))
     except Exception as e:
         print(f"WARN chat_member handler: {e}", flush=True)
     print("telegram gateway starting", flush=True)
     try:
         app.run_polling(
-            drop_pending_updates=True,
+            drop_pending_updates=False,
             allowed_updates=["message", "my_chat_member", "chat_member"],
             stop_signals=None,
         )
