@@ -47,7 +47,7 @@ export const telegramBotTemplate: AppTemplate = {
       label: "Bot username (optional)",
       type: "text",
       placeholder: "MyShopBot",
-      help: "Without @. Used for t.me/…?startgroup=1. Leave blank to look it up from the token.",
+      help: "Without @. Must end with bot (e.g. qadbakbot). Leave blank — Qadbak reads the real username from the token.",
     },
     {
       name: "telegramChatId",

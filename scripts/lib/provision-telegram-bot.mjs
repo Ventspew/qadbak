@@ -42,6 +42,10 @@ function parseBool(v, fallback = true) {
   return fallback;
 }
 
+function sanitizeTelegramToken(raw) {
+  return String(raw || "").replace(/\s+/g, "");
+}
+
 function sanitizeSecret(raw) {
   return String(raw || "").trim().replace(/[\r\n]/g, "");
 }
@@ -72,17 +76,41 @@ function statusToken() {
   return createHmac("sha256", secret).update("qadbak-discord-bot-status-v1").digest("hex");
 }
 
-async function fetchBotUsername(token) {
-  if (!token) return "";
+async function requireTelegramIdentity(token) {
+  const clean = sanitizeTelegramToken(token);
+  if (!clean) {
+    fail(
+      "Each Telegram Bot app needs its own BotFather token. " +
+        "Create a bot at https://t.me/BotFather, then paste THAT token here. " +
+        "Do not reuse a Discord token or another customer's Telegram bot.",
+    );
+  }
+  if (!/^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(clean)) {
+    fail(
+      "Paste the full BotFather token as one line (numbers, a colon, then the secret). " +
+        "Do not paste only the first number, and do not add spaces.",
+    );
+  }
   try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
+    const res = await fetch(`https://api.telegram.org/bot${clean}/getMe`, {
       headers: { "User-Agent": "QadbakTelegramProvision/1.0" },
     });
-    if (!res.ok) return "";
-    const body = await res.json();
-    return sanitizeUsername(body?.result?.username || "");
+    const body = await res.json().catch(() => ({}));
+    const username = sanitizeUsername(body?.result?.username || "");
+    if (!res.ok || !body?.ok || !username) {
+      fail(
+        "Telegram rejected this token. Open BotFather, copy the whole API token, " +
+          "and paste it again as one line.",
+      );
+    }
+    if (!/bot$/i.test(username)) {
+      fail(`Telegram username @${username} must end with bot.`);
+    }
+    return { token: clean, username };
   } catch {
-    return "";
+    fail(
+      "Could not reach Telegram to verify the token. Check outbound HTTPS from this server.",
+    );
   }
 }
 
@@ -396,26 +424,13 @@ export async function telegramBotInstall(domain, payloadJson) {
   await mkdir(appDir, { recursive: true });
 
   const existing = await readDomainConfigJson(parent, "telegram-bot.json", null);
-  const telegramBotToken =
-    sanitizeSecret(payload.telegramBotToken) || existing?.telegramBotToken || "";
   const telegramChatId =
     sanitizeSecret(payload.telegramChatId) || existing?.telegramChatId || "";
-  let telegramBotUsername =
-    sanitizeUsername(payload.telegramBotUsername) ||
-    sanitizeUsername(existing?.telegramBotUsername) ||
-    "";
-
-  if (!telegramBotToken) {
-    fail(
-      "Each Telegram Bot app needs its own BotFather token. " +
-        "Create a bot at https://t.me/BotFather, then paste THAT token here. " +
-        "Do not reuse a Discord token or another customer's Telegram bot.",
-    );
-  }
-
-  if (!telegramBotUsername) {
-    telegramBotUsername = await fetchBotUsername(telegramBotToken);
-  }
+  const identity = await requireTelegramIdentity(
+    payload.telegramBotToken || existing?.telegramBotToken || "",
+  );
+  const telegramBotToken = identity.token;
+  const telegramBotUsername = identity.username;
 
   const recipes = normalizeRecipes(seedTasks(payload, botName), botName);
   await writeFile(path.join(dataDir, "tasks.json"), `${JSON.stringify(recipes, null, 2)}\n`);

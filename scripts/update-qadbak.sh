@@ -173,6 +173,18 @@ if [[ "$(id -u)" -eq 0 ]] && command -v docker >/dev/null; then
       appdir="$(dirname "$compose")/app"
       mkdir -p "$appdir"
       cp -a "$ROOT/integrations/telegram-bot/." "$appdir/"
+      # Tokens pasted with line-wrap spaces still have to poll Telegram.
+      python3 - "$compose" <<'PY' || true
+import pathlib, re, sys
+p = pathlib.Path(sys.argv[1])
+text = p.read_text()
+def repl(m):
+    return m.group(1) + re.sub(r"\s+", "", m.group(2)) + m.group(3)
+new = re.sub(r'(TELEGRAM_BOT_TOKEN:\s*")([^"]*)(")', repl, text)
+if new != text:
+    p.write_text(new)
+    print("    stripped whitespace from TELEGRAM_BOT_TOKEN in", p)
+PY
       if docker compose -f "$compose" build bot && docker compose -f "$compose" up -d; then
         echo "    OK $(dirname "$compose")"
       else

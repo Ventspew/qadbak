@@ -9,6 +9,7 @@ import os
 import re
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,7 +18,7 @@ from pathlib import Path
 
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "http://127.0.0.1:8788").rstrip("/")
 BOT_NAME = os.environ.get("BOT_NAME", "Qadbak").strip() or "Qadbak"
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+BOT_TOKEN = re.sub(r"\s+", "", os.environ.get("TELEGRAM_BOT_TOKEN", "").strip())
 DEFAULT_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 SUB_PATH = Path(os.environ.get("SUBSCRIBERS_PATH", "/data/telegram-subscribers.json"))
 TASKS_PATH = Path(os.environ.get("TASKS_PATH", "/data/tasks.json"))
@@ -27,6 +28,7 @@ WATCH_PATH = Path(os.environ.get("WATCH_STATE_PATH", "/data/host-watch.json"))
 DIGEST_SEC = 30 * 60
 BOT_STARTED = time.time()
 keyword_cooldown: dict[str, float] = {}
+GATEWAY: dict[str, object] = {"ready": False, "username": ""}
 
 
 def load_json(path: Path, fallback):
@@ -217,7 +219,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/status":
-            payload = json.dumps({"ok": True, "telegram": bool(BOT_TOKEN), "bot": BOT_NAME}).encode()
+            payload = json.dumps(
+                {
+                    "ok": True,
+                    "telegram": bool(BOT_TOKEN),
+                    "bot": BOT_NAME,
+                    "polling": bool(GATEWAY.get("ready")),
+                    "username": GATEWAY.get("username") or "",
+                }
+            ).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -234,11 +244,19 @@ def start_bot() -> None:
     if not BOT_TOKEN:
         print("telegram gateway off (no bot token)", flush=True)
         return
+    if not re.match(r"^\d{5,}:[A-Za-z0-9_-]{20,}$", BOT_TOKEN):
+        print(
+            "telegram gateway off (token is not a full BotFather token — "
+            "paste numbers:secret as one line, no spaces)",
+            flush=True,
+        )
+        return
     try:
         from telegram import Update
         from telegram.ext import (
             Application,
             ChatMemberHandler,
+            CommandHandler,
             ContextTypes,
             MessageHandler,
             filters,
@@ -247,7 +265,27 @@ def start_bot() -> None:
         print(f"WARN python-telegram-bot missing: {e}", flush=True)
         return
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    # JobQueue.run_repeating must run after Application.initialize()
+    # (inside post_init). Calling it before run_polling used to crash
+    # the gateway thread, so /start never reached Telegram.
+    async def post_init(application: Application) -> None:
+        try:
+            await application.bot.delete_webhook(drop_pending_updates=True)
+            me = await application.bot.get_me()
+            GATEWAY["ready"] = True
+            GATEWAY["username"] = str(me.username or "")
+            print(
+                f"telegram gateway ready as @{me.username} id={me.id}",
+                flush=True,
+            )
+        except Exception as e:
+            print(f"WARN telegram getMe: {e}", flush=True)
+        if application.job_queue:
+            application.job_queue.run_repeating(host_watch, interval=45, first=15)
+        else:
+            print("WARN telegram job_queue unavailable — host alerts disabled", flush=True)
+
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     def chat_ids() -> list[str]:
         ids = []
@@ -282,7 +320,10 @@ def start_bot() -> None:
         if not cmd:
             return
         if cmd == "start":
-            await remember(update)
+            try:
+                await remember(update)
+            except Exception as e:
+                print(f"WARN remember: {e}", flush=True)
             await update.message.reply_text(f"Linked to {BOT_NAME}. Try {listed_commands()}.")
             return
         for row in enabled_tasks("qadbak.help"):
@@ -391,22 +432,34 @@ def start_bot() -> None:
             state["scheduled"] = scheduled
             save_json(WATCH_PATH, state)
 
+    app.add_handler(CommandHandler("start", on_command))
     app.add_handler(MessageHandler(filters.COMMAND, on_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-    app.add_handler(ChatMemberHandler(on_chat_member, ChatMemberHandler.CHAT_MEMBER))
-    if app.job_queue:
-        app.job_queue.run_repeating(host_watch, interval=45, first=15)
-    else:
-        print("WARN telegram job_queue unavailable — host alerts disabled", flush=True)
+    try:
+        app.add_handler(ChatMemberHandler(on_chat_member, ChatMemberHandler.CHAT_MEMBER))
+    except Exception as e:
+        print(f"WARN chat_member handler: {e}", flush=True)
     print("telegram gateway starting", flush=True)
-    app.run_polling(
-        allowed_updates=["message", "my_chat_member", "chat_member"],
-        stop_signals=None,
-    )
+    try:
+        app.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message", "my_chat_member", "chat_member"],
+            stop_signals=None,
+        )
+    except Exception:
+        traceback.print_exc()
+        print("telegram gateway crashed — /start will not work until this is fixed", flush=True)
 
 
 def main() -> None:
-    threading.Thread(target=start_bot, daemon=True).start()
+    def run_gateway() -> None:
+        try:
+            start_bot()
+        except Exception:
+            traceback.print_exc()
+            print("telegram gateway thread died", flush=True)
+
+    threading.Thread(target=run_gateway, daemon=True).start()
     port = int(os.environ.get("PORT", "8788"))
     httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"telegram-bot on :{port} public={PUBLIC_URL} token={bool(BOT_TOKEN)} name={BOT_NAME}", flush=True)
