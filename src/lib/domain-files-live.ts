@@ -1,7 +1,6 @@
 import type { DomainFileEntry, DomainFileContent } from "./domain-files";
 import { probeDomainFsSudo, runDomainFsInstallUpload, runDomainFsSudo } from "./domain-fs-sudo";
 import {
-  domainHomePath,
   enrichEntry,
   isDirWritable,
   isTextFileName,
@@ -11,9 +10,13 @@ import {
   normalizeDir,
   resolveMoveDestination,
 } from "./domain-files";
+import {
+  resolveDomainFilesContext,
+  type DomainFilesContext,
+} from "./domain-files-context";
+import { absUnderRoot, isAbsInsideRoot } from "./domain-docroot";
 import { PanelError } from "./errors";
 import type { HostedDomain } from "./types";
-import { getProvisioner } from "./provisioner";
 import type { Role } from "./types";
 
 let liveFsProbe: boolean | null = null;
@@ -61,28 +64,47 @@ export async function probeLiveFilesystem(): Promise<boolean> {
   return ok;
 }
 
-async function resolveUnixUser(
+async function filesContext(
   domain: HostedDomain | string,
   actor: { role: Role; domains: string[] },
-): Promise<string> {
-  if (typeof domain !== "string" && domain.user) return domain.user;
+): Promise<DomainFilesContext> {
   const name = typeof domain === "string" ? domain : domain.name;
-  const rows = await getProvisioner().listDomains(actor);
-  const row = rows.find((d) => d.name.toLowerCase() === name.toLowerCase());
-  if (row?.user) return row.user;
-  return domainHomePath(domain).replace(/^\/home\//, "");
+  return resolveDomainFilesContext(name, actor);
 }
 
-function absDirFromPanel(unixUser: string, dir: string): string {
-  const home = `/home/${unixUser}`;
+function absDirFromPanel(ctx: DomainFilesContext, dir: string): string {
   const cwd = normalizeDir(dir);
-  return cwd ? `${home}/${cwd}` : home;
+  const abs = absUnderRoot(ctx.filesRoot, cwd);
+  if (!isAbsInsideRoot(ctx.filesRoot, abs)) {
+    throw new PanelError("Path is outside this domain's file tree.");
+  }
+  return abs;
 }
 
-function absFileFromPanel(unixUser: string, panelPath: string): string {
-  const home = `/home/${unixUser}`;
+function absFileFromPanel(ctx: DomainFilesContext, panelPath: string): string {
   const rel = panelPath.replace(/^\/+/, "");
-  return rel ? `${home}/${rel}` : home;
+  const abs = absUnderRoot(ctx.filesRoot, rel);
+  if (!isAbsInsideRoot(ctx.filesRoot, abs)) {
+    throw new PanelError("Path is outside this domain's file tree.");
+  }
+  return abs;
+}
+
+async function ensureFilesTree(ctx: DomainFilesContext): Promise<void> {
+  if (ctx.filesRoot !== ctx.home) {
+    try {
+      await runHelper("mkdir", ctx.filesRoot);
+    } catch {
+      /* exists */
+    }
+  }
+  if (ctx.webRoot !== ctx.filesRoot) {
+    try {
+      await runHelper("mkdir", ctx.webRoot);
+    } catch {
+      /* exists */
+    }
+  }
 }
 
 export async function listDomainFilesLive(
@@ -90,9 +112,10 @@ export async function listDomainFilesLive(
   dir: string,
   actor: { role: Role; domains: string[] },
 ): Promise<DomainFileEntry[]> {
-  const unixUser = await resolveUnixUser(domain, actor);
+  const ctx = await filesContext(domain, actor);
+  await ensureFilesTree(ctx);
   const cwd = normalizeDir(assertSafePanelPath(dir));
-  const abs = absDirFromPanel(unixUser, cwd);
+  const abs = absDirFromPanel(ctx, cwd);
   const data = await runHelper("list", abs);
   const raw = (data.entries ?? []) as Array<{
     name: string;
@@ -125,8 +148,8 @@ export async function readDomainFileLive(
   actor: { role: Role; domains: string[] },
 ): Promise<DomainFileContent> {
   const safePath = assertSafePanelPath(panelPath);
-  const unixUser = await resolveUnixUser(domain, actor);
-  const abs = absFileFromPanel(unixUser, safePath);
+  const ctx = await filesContext(domain, actor);
+  const abs = absFileFromPanel(ctx, safePath);
   const data = await runHelper("read", abs);
   const name = safePath.split("/").pop() ?? safePath;
   const parent = safePath.includes("/")
@@ -149,8 +172,8 @@ export async function writeDomainFileLive(
   actor: { role: Role; domains: string[] },
 ): Promise<void> {
   const safePath = assertSafePanelPath(panelPath);
-  const unixUser = await resolveUnixUser(domain, actor);
-  const abs = absFileFromPanel(unixUser, safePath);
+  const ctx = await filesContext(domain, actor);
+  const abs = absFileFromPanel(ctx, safePath);
   if (!isTextFileName(safePath.split("/").pop() ?? "")) {
     throw new PanelError("You cannot edit this file type as text.");
   }
@@ -173,8 +196,8 @@ export async function mkdirDomainLive(
   if (!isDirWritable(parentNorm)) {
     throw new PanelError("This directory is read-only.");
   }
-  const unixUser = await resolveUnixUser(domain, actor);
-  const base = absDirFromPanel(unixUser, parentNorm);
+  const ctx = await filesContext(domain, actor);
+  const base = absDirFromPanel(ctx, parentNorm);
   const safe = name.replace(/[/\\]/g, "").trim();
   if (!safe || safe === "." || safe === "..") {
     throw new PanelError("Invalid directory name.");
@@ -199,8 +222,8 @@ export async function uploadDomainFileFromTempLive(
   if (!isDirWritable(parent)) {
     throw new PanelError("This directory is read-only.");
   }
-  const unixUser = await resolveUnixUser(domain, actor);
-  const abs = absFileFromPanel(unixUser, safePath);
+  const ctx = await filesContext(domain, actor);
+  const abs = absFileFromPanel(ctx, safePath);
   const { sizeBytes } = await runDomainFsInstallUpload(abs, tempPath, maxBytes, options);
   markLiveFilesystemReady();
   return sizeBytes;
@@ -224,8 +247,8 @@ export async function uploadDomainFileLive(
   if (!isDirWritable(parent)) {
     throw new PanelError("This directory is read-only.");
   }
-  const unixUser = await resolveUnixUser(domain, actor);
-  const abs = absFileFromPanel(unixUser, safePath);
+  const ctx = await filesContext(domain, actor);
+  const abs = absFileFromPanel(ctx, safePath);
   const base64 = Buffer.from(data).toString("base64");
   await runHelper("write-bytes", abs, { base64, maxBytes: cap });
 }
@@ -255,9 +278,9 @@ export async function moveDomainPathLive(
     throw new PanelError("Cannot move a folder into itself or a subfolder.");
   }
 
-  const unixUser = await resolveUnixUser(domain, actor);
-  const absSrc = absFileFromPanel(unixUser, srcNorm);
-  const absDest = absFileFromPanel(unixUser, destPanelPath);
+  const ctx = await filesContext(domain, actor);
+  const absSrc = absFileFromPanel(ctx, srcNorm);
+  const absDest = absFileFromPanel(ctx, destPanelPath);
   await runHelper("move", absSrc, {
     destAbs: absDest,
     overwrite: options?.overwrite === true,
@@ -277,8 +300,8 @@ export async function deleteDomainFileLive(
   if (!isDirWritable(parent)) {
     throw new PanelError("This path is read-only.");
   }
-  const unixUser = await resolveUnixUser(domain, actor);
-  const abs = absFileFromPanel(unixUser, safePath);
+  const ctx = await filesContext(domain, actor);
+  const abs = absFileFromPanel(ctx, safePath);
   await runHelper("unlink", abs);
 }
 
@@ -295,12 +318,12 @@ export async function extractArchiveLive(
   if (!isDirWritable(parent)) {
     throw new PanelError("This directory is read-only.");
   }
-  const unixUser = await resolveUnixUser(domain, actor);
-  const absArchive = absFileFromPanel(unixUser, safeArchive);
+  const ctx = await filesContext(domain, actor);
+  const absArchive = absFileFromPanel(ctx, safeArchive);
   const destNorm = normalizeDir(assertSafePanelPath(destDir));
   const payload: Record<string, unknown> = {};
   if (destNorm) {
-    payload.destAbs = absDirFromPanel(unixUser, destNorm);
+    payload.destAbs = absDirFromPanel(ctx, destNorm);
   } else {
     const base = safeArchive.split("/").pop() ?? "archive";
     payload.destName = base.replace(/\.(tar\.gz|tgz|zip|tar)$/i, "");
@@ -330,8 +353,8 @@ export async function createArchiveLive(
   if (!isDirWritable(parentNorm)) {
     throw new PanelError("This directory is read-only.");
   }
-  const unixUser = await resolveUnixUser(domain, actor);
-  const absParent = absDirFromPanel(unixUser, parentNorm);
+  const ctx = await filesContext(domain, actor);
+  const absParent = absDirFromPanel(ctx, parentNorm);
   const data = await runHelper(
     "archive-create",
     absParent,

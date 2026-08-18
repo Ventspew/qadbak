@@ -22,6 +22,7 @@ import { chpasswdSafe } from "./chpasswd-safe.mjs";
 import { syncPhpFpmAndNginx } from "./provision-php.mjs";
 import { applyOsDiskQuota } from "./os-disk-quota.mjs";
 import { syncDovecotQuota } from "./dovecot-quota.mjs";
+import { sharedSubDocroot } from "./domain-docroot.mjs";
 
 const exec = promisify(execFile);
 
@@ -47,11 +48,11 @@ async function reloadNginx(domain, user) {
   await exec("bash", [script, domain, user], { timeout: 120_000 });
 }
 
-async function writeLandingPage(home, user, domain) {
+async function writeLandingPage(pubDir, user, domain) {
   const script = path.join(QADBAK_DIR, "scripts", "lib", "qadbak-landing-html.sh");
   await exec(
     "bash",
-    ["-c", `source "${script}" && write_qadbak_landing "${home}/public_html" "${domain}" "${user}:${user}"`],
+    ["-c", `source "${script}" && write_qadbak_landing "${pubDir}" "${domain}" "${user}:${user}"`],
     { timeout: 30_000 },
   ).catch(() => {});
 }
@@ -135,8 +136,24 @@ export async function domainCreate(domain, pass, userOpt, extraJson) {
     jstep("shell", `Took ownership of public_html and backups for ${user}`, {
       command: `chown ${user}:${user} public_html backups`,
     });
-    await writeLandingPage(home, user, name);
+    await writeLandingPage(path.join(home, "public_html"), user, name);
     jinfo(`Wrote Qadbak landing page in ${home}/public_html`);
+  }
+
+  if (type === "sub" && parent && user === parentUser) {
+    const doc = sharedSubDocroot(home, name);
+    await mkdir(doc, { recursive: true });
+    await exec("chown", ["-R", `${user}:${user}`, path.dirname(doc)]).catch(() => {});
+    await writeLandingPage(doc, user, name);
+    const site = await readDomainConfigJson(name, "website.json", {});
+    if (!site.webRoot) {
+      await writeDomainConfigJson(name, "website.json", {
+        ...site,
+        webRoot: doc,
+        mode: site.mode || "php",
+      });
+    }
+    jinfo(`Shared-sub document root ${doc}`);
   }
 
   if (type === "alias" && parentUser) {
@@ -245,7 +262,7 @@ export async function domainCreate(domain, pass, userOpt, extraJson) {
     });
   }
 
-  if (ownedByQadbak && type !== "alias") {
+  if (type !== "alias") {
     const repairScript = path.join(QADBAK_DIR, "scripts", "fix-domain-website.sh");
     try {
       const t0 = Date.now();

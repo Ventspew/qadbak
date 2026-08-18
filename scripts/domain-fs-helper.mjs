@@ -302,9 +302,15 @@ async function writeFile(absPath, content) {
 }
 
 async function mkdirPath(absPath) {
-  await assertHomePath(path.dirname(absPath));
-  await fs.mkdir(absPath, { recursive: false });
-  await chownToHomeUser(absPath);
+  const abs = path.resolve(absPath);
+  if (abs !== "/home" && !abs.startsWith("/home/")) {
+    fail("Path must be under /home/.");
+  }
+  const user = homeUnixUser(`${abs}/`);
+  if (!user) fail("Path must be under /home/<user>/.");
+  await assertHomePath(`/home/${user}`);
+  await fs.mkdir(abs, { recursive: true });
+  await chownTree(abs);
   emit({ ok: true });
 }
 

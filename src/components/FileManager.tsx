@@ -365,15 +365,15 @@ export function FileManager({
       <DomainPageHeader
         domain={domain}
         title="Files"
-        description={`${listing.home} · document root: public_html`}
+        description={`${listing.home} · document root: ${listing.docRoot || "public_html"}`}
       />
       {error && <Alert>{sanitizeUserFacingMessage(error)}</Alert>}
       {success && <Alert variant="success">{success}</Alert>}
 
       <div className="flex flex-wrap gap-2">
-        {DOMAIN_FILE_QUICK_PATHS.map((q) => (
+        {(listing.quickPaths ?? DOMAIN_FILE_QUICK_PATHS).map((q) => (
           <Button
-            key={q.id}
+            key={q.id || "website"}
             variant="secondary"
             disabled={loading}
             onClick={() => navigate(q.id)}
@@ -383,6 +383,13 @@ export function FileManager({
           </Button>
         ))}
       </div>
+      {listing.jailed && (
+        <p className="text-sm text-panel-muted">
+          Files for this hostname live in their own folder, not the parent
+          domain&apos;s public_html. If the live site still shows the parent,
+          use Overview → Repair.
+        </p>
+      )}
 
       {!isQadbak && (
         <Alert>

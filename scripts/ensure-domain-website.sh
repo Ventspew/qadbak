@@ -23,6 +23,11 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 QADBAK_DIR="${QADBAK_DIR:-$ROOT}"
+# shellcheck source=lib/website-config.sh
+source "$QADBAK_DIR/scripts/lib/website-config.sh"
+# website-config.sh enables errexit; this script is best-effort.
+set +e
+set -uo pipefail
 
 # -----------------------------------------------------------------------------
 # Placeholder detection
@@ -112,8 +117,9 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 HOME_DIR="/home/${USER}"
-PUB="${HOME_DIR}/public_html"
+PUB="$(website_web_root "$DOMAIN" "$USER")"
 BAK="${HOME_DIR}/backups"
+PARENT_PUB="${HOME_DIR}/public_html"
 
 if ! id "$USER" >/dev/null 2>&1; then
   echo "cannot ensure $DOMAIN without unix user $USER" >&2
@@ -153,17 +159,33 @@ fi
 if [[ ! -d "$BAK" ]]; then
   mkdir -p "$BAK" && created_any=1
 fi
-# public_html + backups only — mailbox homes/ must keep their own UIDs.
-if chown -R "${USER}:${USER}" "$PUB" "$BAK" 2>/dev/null; then
-  if (( created_any )); then
-    echo "    created missing public_html/backups + chown ${USER}:${USER}"
+if [[ "$PUB" == "$PARENT_PUB" ]]; then
+  # public_html + backups only — mailbox homes/ must keep their own UIDs.
+  if chown -R "${USER}:${USER}" "$PUB" "$BAK" 2>/dev/null; then
+    if (( created_any )); then
+      echo "    created missing public_html/backups + chown ${USER}:${USER}"
+    else
+      echo "    public_html + backups already present; re-asserted ownership"
+    fi
+    mark "public_html/backups" "ok"
   else
-    echo "    public_html + backups already present; re-asserted ownership"
+    echo "    WARN — chown failed for $HOME_DIR (continuing)" >&2
+    mark "public_html/backups" "warn"
   fi
-  mark "public_html/backups" "ok"
 else
-  echo "    WARN — chown failed for $HOME_DIR (continuing)" >&2
-  mark "public_html/backups" "warn"
+  if chown -R "${USER}:${USER}" "$PUB" "$BAK" 2>/dev/null; then
+    echo "    subdomain docroot $PUB + backups; chown ${USER}:${USER}"
+    mark "public_html/backups" "ok"
+  else
+    echo "    WARN — chown failed for $PUB (continuing)" >&2
+    mark "public_html/backups" "warn"
+  fi
+  cfg="$(website_config_file "$DOMAIN")"
+  if [[ ! -f "$cfg" ]]; then
+    node "$QADBAK_DIR/scripts/lib/write-website-config.mjs" "$DOMAIN" --webRoot "$PUB" --mode php \
+      && echo "    wrote website.json webRoot=$PUB" \
+      || echo "    WARN — could not write website.json" >&2
+  fi
 fi
 
 # -----------------------------------------------------------------------------

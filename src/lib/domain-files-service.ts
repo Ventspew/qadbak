@@ -1,11 +1,14 @@
 import {
   breadcrumbsFor,
-  domainHomePath,
   isDirWritable,
   isPanelFilesMode,
   listDomainFiles,
   type DomainFilesListing,
 } from "./domain-files";
+import {
+  mapRequestedFilesDir,
+  resolveDomainFilesContext,
+} from "./domain-files-context";
 import {
   deleteDomainFileLive,
   listDomainFilesLive,
@@ -24,17 +27,21 @@ export async function resolveDomainFilesListing(
   dir: string,
   actor: { role: Role; domains: string[] },
 ): Promise<{ listing: DomainFilesListing; error: string }> {
-  const cwd = dir.replace(/^\/+/, "").replace(/\/+$/, "");
-  const home = domainHomePath(domain);
+  const ctx = await resolveDomainFilesContext(domain, actor);
+  const cwd = mapRequestedFilesDir(ctx, dir);
+  const homeLabel = ctx.jailed ? domain : "Home";
   const base = {
-    home,
+    home: ctx.filesRoot,
     cwd,
-    breadcrumbs: breadcrumbsFor(cwd),
+    breadcrumbs: breadcrumbsFor(cwd, homeLabel),
     writable: isDirWritable(cwd),
+    docRoot: ctx.defaultDir,
+    jailed: ctx.jailed,
+    quickPaths: ctx.quickPaths,
   };
 
   if (isPanelFilesMode()) {
-    return { listing: listDomainFiles(domain, cwd), error: "" };
+    return { listing: { ...listDomainFiles(domain, cwd), ...base }, error: "" };
   }
 
   if (liveFilesEnabled()) {

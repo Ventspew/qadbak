@@ -31,6 +31,11 @@ export interface DomainFilesListing {
   entries?: DomainFileEntry[];
   fileManagerUrl?: string;
   writable?: boolean;
+  /** Relative document root inside `home` (usually public_html). */
+  docRoot?: string;
+  /** True when Files is scoped to this domain, not the whole unix home. */
+  jailed?: boolean;
+  quickPaths?: { id: string; label: string; description: string }[];
 }
 
 export interface DomainFileContent {
@@ -319,8 +324,11 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function breadcrumbsFor(cwd: string): DomainFilesListing["breadcrumbs"] {
-  const crumbs: DomainFilesListing["breadcrumbs"] = [{ label: "Home", path: "" }];
+export function breadcrumbsFor(
+  cwd: string,
+  homeLabel = "Home",
+): DomainFilesListing["breadcrumbs"] {
+  const crumbs: DomainFilesListing["breadcrumbs"] = [{ label: homeLabel, path: "" }];
   if (!cwd) return crumbs;
   const parts = cwd.split("/");
   let acc = "";

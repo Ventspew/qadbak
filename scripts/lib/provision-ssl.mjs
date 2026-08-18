@@ -8,6 +8,7 @@ import {
   fileExists,
   resolveDomainUser,
   assertNotAliasDomain,
+  readDomainConfigJson,
   QADBAK_DIR,
 } from "./provisioning-common.mjs";
 
@@ -166,7 +167,9 @@ export async function sslIssue(domain, host) {
     process.env.QADBAK_LE_EMAIL?.trim() ||
     process.env.LE_EMAIL?.trim() ||
     `admin@${domain}`;
-  const webroot = path.join(home, "public_html");
+  const webroot =
+    String((await readDomainConfigJson(domain, "website.json", {})).webRoot || "").trim() ||
+    path.join(home, "public_html");
   const args = [
     "certonly",
     "--non-interactive",

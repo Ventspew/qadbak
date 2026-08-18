@@ -23,6 +23,19 @@ website_web_root() {
       return 0
     fi
   fi
+  local reg="${QADBAK_DIR:-/opt/qadbak}/data/native-domains.json"
+  if [[ -f "$reg" ]] && command -v jq &>/dev/null; then
+    local type parent parent_user
+    type="$(jq -r --arg d "$domain" '.[] | select(.name==$d) | .type // "top"' "$reg" 2>/dev/null | head -1)"
+    parent="$(jq -r --arg d "$domain" '.[] | select(.name==$d) | .parent // empty' "$reg" 2>/dev/null | head -1)"
+    if [[ "$type" == "sub" && -n "$parent" ]]; then
+      parent_user="$(jq -r --arg p "$parent" '.[] | select(.name==$p) | .user // empty' "$reg" 2>/dev/null | head -1)"
+      if [[ -z "$parent_user" || "$parent_user" == "$user" ]]; then
+        echo "/home/${user}/domains/${domain}/public_html"
+        return 0
+      fi
+    fi
+  fi
   echo "/home/${user}/public_html"
 }
 
