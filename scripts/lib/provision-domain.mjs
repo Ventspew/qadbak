@@ -262,31 +262,10 @@ export async function domainCreate(domain, pass, userOpt, extraJson) {
     });
   }
 
-  if (type !== "alias") {
-    const repairScript = path.join(QADBAK_DIR, "scripts", "fix-domain-website.sh");
-    try {
-      const t0 = Date.now();
-      const { stdout, stderr } = await exec("bash", [repairScript, name], {
-        timeout: 300_000,
-        maxBuffer: 8 * 1024 * 1024,
-      });
-      jstep("shell", `Website live for ${name} (fix-domain-website)`, {
-        command: `fix-domain-website.sh ${name}`,
-        durationMs: Date.now() - t0,
-        output: [stdout, stderr].filter(Boolean).join("\n"),
-      });
-    } catch (err) {
-      const message = err?.stderr || err?.stdout || err?.message || String(err);
-      jstep("shell", `fix-domain-website.sh non-fatal failure for ${name}`, {
-        command: `fix-domain-website.sh ${name}`,
-        ok: false,
-        output: message,
-        errorMessage:
-          "Website repair failed during create — use Overview → Repair or: " +
-          `sudo bash ${repairScript} ${name}`,
-      });
-    }
-  }
+  // Do not run fix-domain-website.sh / certbot here: they often wait minutes
+  // for DNS that is not pointed yet, and the panel then receives an HTML
+  // timeout page instead of JSON. Nginx + mail are already applied above.
+  // SSL: Overview → Repair once DNS points at this VPS.
 
   await bootstrapDomainServices(name, type);
 
@@ -305,16 +284,7 @@ async function bootstrapDomainServices(name, type) {
       errorMessage: err instanceof Error ? err.message : String(err),
     });
   }
-  try {
-    const { sslIssue } = await import("./provision-ssl.mjs");
-    await sslIssue(name, name);
-    jinfo(`SSL certificate requested for ${name}`);
-  } catch (err) {
-    jstep("shell", `SSL issue non-fatal for ${name} (DNS may not be live yet)`, {
-      ok: false,
-      errorMessage: err instanceof Error ? err.message : String(err),
-    });
-  }
+  jinfo(`SSL not requested at create time — use Overview → Repair after DNS is live`);
 }
 
 async function removeApacheVhostForDomain(domain) {

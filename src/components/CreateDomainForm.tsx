@@ -1,6 +1,7 @@
 "use client";
 
 import { Alert, Button, Card, Input, Label } from "@/components/ui";
+import { apiFetch, parseApiJson } from "@/lib/api-fetch";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -48,7 +49,7 @@ export function CreateDomainForm({
     setHostingNote("");
     setPremiumNote("");
     try {
-      const res = await fetch("/api/domains", {
+      const res = await apiFetch("/domains", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -62,10 +63,27 @@ export function CreateDomainForm({
           createPanelVhost: type === "top" ? createPanelVhost : false,
         }),
       });
-      const data = await res.json();
+      const data = await parseApiJson<{
+        error?: string;
+        unixPassword?: string;
+        journalId?: string;
+        dnsNote?: string;
+        hostingNote?: string;
+        premiumNote?: string;
+        clientAccount?: { username: string; password: string; panelUrl?: string };
+        clientUsername?: string;
+        clientPassword?: string;
+        panelUrl?: string;
+      }>(res);
       if (!res.ok) throw new Error(data.error ?? "Create failed.");
       if (data.clientAccount) {
         setClientCredentials(data.clientAccount);
+      } else if (data.clientUsername && data.clientPassword) {
+        setClientCredentials({
+          username: data.clientUsername,
+          password: data.clientPassword,
+          panelUrl: data.panelUrl,
+        });
       }
       if (data.unixPassword) {
         setUnixPassword(data.unixPassword);

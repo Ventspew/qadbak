@@ -115,8 +115,10 @@ if [[ -f "$ENV_FILE" ]]; then
   }
 fi
 
-echo "==> Syntax check (domain-fs-helper)"
+echo "==> Syntax check (helpers)"
 node --check "$ROOT/scripts/domain-fs-helper.mjs"
+node --check "$ROOT/scripts/provisioning-helper.mjs"
+node --check "$ROOT/scripts/lib/ensure-shared-subdomain.mjs"
 
 echo "==> Build (as $USER — never npm install/build as root)"
 if [[ "$(id -u)" -eq 0 ]] && [[ -f "$ROOT/scripts/fix-qadbak-ownership.sh" ]]; then

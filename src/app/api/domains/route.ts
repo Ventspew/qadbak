@@ -3,7 +3,6 @@ import { requireAdmin } from "@/lib/admin-api";
 import { handleApiError, jsonError, jsonOk } from "@/lib/api";
 import { beginJournal } from "@/lib/journal";
 import { randomPanelPassword } from "@/lib/panel-password";
-import { repairAvailable, repairDomainWebsite } from "@/lib/domain-repair";
 import {
   ensurePanelVhost,
   upsertPanelClient,
@@ -32,7 +31,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  return runWithJournalStore(async () => doCreateDomain(request));
+  try {
+    return await runWithJournalStore(async () => doCreateDomain(request));
+  } catch (err) {
+    return handleApiError(err);
+  }
 }
 
 async function doCreateDomain(request: Request) {
@@ -216,25 +219,8 @@ async function doCreateDomain(request: Request) {
       }
     }
 
-    let hostingNote: string | undefined;
-    if (await repairAvailable()) {
-      try {
-        await repairDomainWebsite(created.name);
-        journal.captureFromHelper(consumeLastJournalSteps());
-        journal.infoStep(
-          `Re-applied per-domain nginx + permissions via Repair helper.`,
-        );
-        hostingNote =
-          "Website hosting configured for this domain (nginx public_html vhost, same as Repair).";
-      } catch {
-        journal.captureFromHelper(consumeLastJournalSteps());
-        journal.warnStep(
-          `Repair helper failed - site may need a manual run from Domains → Overview.`,
-        );
-        hostingNote =
-          "Domain created. Open Overview → Repair on server if the site does not load yet.";
-      }
-    }
+    const hostingNote =
+      "Website vhost is in place. After DNS points here, use Overview → Repair for SSL.";
 
     try {
       await runProvisioningHelper(
@@ -277,8 +263,12 @@ async function doCreateDomain(request: Request) {
     });
   } catch (err) {
     if (journal) {
-      journal.captureFromHelper(consumeLastJournalSteps());
-      await journal.finish(false, err instanceof Error ? err.message : String(err));
+      try {
+        journal.captureFromHelper(consumeLastJournalSteps());
+        await journal.finish(false, err instanceof Error ? err.message : String(err));
+      } catch {
+        /* never fail the API with a journal write */
+      }
     }
     return handleApiError(err);
   }
