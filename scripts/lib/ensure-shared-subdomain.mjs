@@ -57,7 +57,7 @@ export async function publishSharedSubDocroot(home, fqdn, user, extraWww) {
 
 /**
  * Create (or repair) a shared-user subdomain: own document root under
- * ~/domains/<fqdn>/public_html, not the parent public_html / apps/*/www.
+ * ~/domains/<fqdn>/public_html, not the parent public_html or leftover app www folders.
  */
 export async function ensureSharedSubdomain(parentDomain, user, subPrefix) {
   const parent = String(parentDomain || "").trim().toLowerCase();
