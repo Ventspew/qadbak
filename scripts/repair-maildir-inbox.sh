@@ -33,6 +33,9 @@ fi
 
 echo "==> Maildir $UHOME/Maildir"
 mkdir -p "$UHOME/Maildir"/{cur,new,tmp}
+for folder in Sent Drafts Archive Junk Trash; do
+  mkdir -p "$UHOME/Maildir/.${folder}"/{cur,new,tmp}
+done
 chown -R "${USER_LOCAL}:${GROUP}" "$UHOME/Maildir"
 chmod -R u+rwX,g+rwX "$UHOME/Maildir"
 

@@ -68,7 +68,7 @@ export async function mailCreateDirect(domain, localUser, pass, real) {
 
   if (isOwner) {
     maildir = path.join(home, "Maildir");
-    await ensureMaildir(maildir);
+    await ensureMaildir(maildir, owner);
     await exec("chown", ["-R", `${owner}:${owner}`, maildir], { timeout: 60_000 });
   } else {
     const homesDir = layout.homesDir || path.join(home, "homes");
@@ -97,7 +97,7 @@ export async function mailCreateDirect(domain, localUser, pass, real) {
       await mkdir(userHome, { recursive: true });
     }
     maildir = await resolveMailboxMaildir(layout, local, owner, home);
-    await ensureMaildir(maildir);
+    await ensureMaildir(maildir, local);
     const actualHome = (await resolveUnixHome(local)) || userHome;
     await exec("chown", ["-R", `${local}:${owner}`, actualHome], { timeout: 60_000 });
   }
@@ -105,6 +105,7 @@ export async function mailCreateDirect(domain, localUser, pass, real) {
   await ensureStandardMailboxes({
     authUser: email,
     maildirRoot: maildir,
+    unixUser: isOwner ? owner : local,
     useDoveadm: await doveadmAvailable(),
   });
 

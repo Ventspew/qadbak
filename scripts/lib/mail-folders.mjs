@@ -10,6 +10,8 @@ import {
   discoverMailLayout,
   ensureMaildir,
   resolveMailboxMaildir,
+  resolveMailboxUnixUser,
+  chownMaildirTree,
   listMailboxesFromLayout,
 } from "./mail-layout.mjs";
 import { doveadmAvailable } from "./doveadm-util.mjs";
@@ -80,7 +82,11 @@ export async function resolveFolderMaildirPath(maildirRoot, folder) {
   }
 
   const preferred = maildirSubfolderPath(maildirRoot, canon);
-  await ensureMaildir(preferred);
+  const inferred = String(maildirRoot || "").match(
+    /^\/home\/[^/]+\/homes\/([^/]+)\/Maildir\/?$/,
+  );
+  const ownerInbox = String(maildirRoot || "").match(/^\/home\/([^/]+)\/Maildir\/?$/);
+  await ensureMaildir(preferred, inferred?.[1] || ownerInbox?.[1] || "");
   return preferred;
 }
 
@@ -168,14 +174,17 @@ export async function saveMailToFolder(domain, localUser, folderCanonical, rawMe
   if (!local) return { ok: false, error: "Missing mailbox user" };
 
   try {
-    const { authUser, maildir } = await resolveImapAuth(domain, local);
+    const { authUser, maildir, owner } = await resolveImapAuth(domain, local);
     const canon = canonicalFolderName(folderCanonical);
+    const unixUser = await resolveMailboxUnixUser(local, owner);
 
     await ensureStandardMailboxes({
       authUser,
       maildirRoot: maildir,
+      unixUser,
       useDoveadm: await doveadmAvailable(),
     });
+    if (maildir) await chownMaildirTree(maildir, unixUser);
 
     const mailbox = authUser
       ? await resolveDovecotMailboxName(authUser, canon)
@@ -198,8 +207,10 @@ export async function saveMailToFolder(domain, localUser, folderCanonical, rawMe
     }
 
     const folderPath = await resolveFolderMaildirPath(maildir, canon);
+    if (unixUser) await chownMaildirTree(folderPath, unixUser);
     const fname = `${Date.now()}.M${process.pid}P${randomBytes(4).toString("hex")}:2,${canon === "Drafts" ? "D" : "S"}`;
     await writeFile(path.join(folderPath, "cur", fname), rawMessage);
+    if (unixUser) await chownMaildirTree(folderPath, unixUser);
     return { ok: true, mailbox: canon, source: "maildir" };
   } catch (e) {
     return {
@@ -215,16 +226,18 @@ export async function saveMailToFolder(domain, localUser, folderCanonical, rawMe
 export async function ensureStandardMailboxes({
   authUser = null,
   maildirRoot = null,
+  unixUser = null,
   useDoveadm = null,
 } = {}) {
   const dove = useDoveadm ?? (await doveadmAvailable());
 
   if (maildirRoot) {
-    await ensureMaildir(maildirRoot);
+    await ensureMaildir(maildirRoot, unixUser);
     for (const name of STANDARD_MAILBOX_FOLDERS) {
       if (name === "INBOX") continue;
-      await ensureMaildir(maildirSubfolderPath(maildirRoot, name));
+      await ensureMaildir(maildirSubfolderPath(maildirRoot, name), unixUser);
     }
+    if (unixUser) await chownMaildirTree(maildirRoot, unixUser);
   }
 
   if (dove && authUser) {

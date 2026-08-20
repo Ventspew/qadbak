@@ -11,6 +11,7 @@ import {
 } from "./provisioning-common.mjs";
 import {
   ensureMaildir,
+  chownMaildirTree,
   discoverMailLayout,
   listMailboxesFromLayout,
   writeVirtualMapFile,
@@ -74,7 +75,7 @@ export async function rebuildPostfixMailboxMaps() {
       const email = `${local}@${domain}`;
       const destUser = local === owner ? owner : local;
       const maildir = await resolveMailboxMaildir(layout, local, owner, home);
-      await ensureMaildir(maildir);
+      await ensureMaildir(maildir, destUser);
       vmailbox.set(email, toPostfixVmailboxPath(maildir));
       const ids = await resolveUnixIds(destUser);
       if (ids) {
@@ -168,7 +169,7 @@ export async function ensureDomainMailSetup(domain, owner) {
   if (!d || !u) return;
 
   const home = `/home/${u}`;
-  await ensureMaildir(path.join(home, "Maildir"));
+  await ensureMaildir(path.join(home, "Maildir"), u);
   const { emails } = await rebuildPostfixMailboxMaps();
   await rebuildVirtualAliasMap();
   await stripVirtualAliasMailboxConflicts(emails);
@@ -206,7 +207,7 @@ export async function mailSyncAll() {
     if (!row.name || row.disabled || row.type === "alias" || !row.user) continue;
     const home = `/home/${row.user}`;
     await ensureHomesTraversal(row.user);
-    await ensureMaildir(path.join(home, "Maildir"));
+    await ensureMaildir(path.join(home, "Maildir"), row.user);
     try {
       const layout = await discoverMailLayout(row.name, row.user, home);
       const mailboxes = await listMailboxesFromLayout(layout);
@@ -216,7 +217,7 @@ export async function mailSyncAll() {
         const maildir = isOwner
           ? path.join(home, "Maildir")
           : await resolveMailboxMaildir(layout, local, row.user, home);
-        await ensureMaildir(maildir);
+        await ensureMaildir(maildir, isOwner ? row.user : local);
         await ensureMailboxOwnership(local, row.user, maildir, isOwner);
       }
     } catch {
@@ -252,19 +253,7 @@ async function countInboxMessages(maildirRoot) {
 
 async function ensureMailboxOwnership(local, owner, maildirRoot, isOwner) {
   const target = isOwner ? owner : local;
-  let group = owner;
-  try {
-    const { stdout } = await exec("id", ["-gn", target], { timeout: 5000 });
-    group = stdout.trim() || owner;
-  } catch {
-    /* use owner */
-  }
-  try {
-    await exec("chown", ["-R", `${target}:${group}`, maildirRoot], { timeout: 60_000 });
-    await exec("chmod", ["-R", "u+rwX,g+rwX", maildirRoot], { timeout: 60_000 });
-  } catch {
-    /* best effort */
-  }
+  await chownMaildirTree(maildirRoot, target);
 }
 
 async function ensureHomesTraversal(owner) {

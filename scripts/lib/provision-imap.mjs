@@ -1,7 +1,7 @@
 import path from "node:path";
 import { cp } from "node:fs/promises";
 import { emit, fail, resolveDomainUser } from "./provisioning-common.mjs";
-import { discoverMailLayout } from "./mail-layout.mjs";
+import { discoverMailLayout, resolveMailboxUnixUser } from "./mail-layout.mjs";
 import {
   authUserCandidates,
   copyMailboxDoveadm,
@@ -80,6 +80,7 @@ export async function imapList(domain, localUser) {
   await ensureStandardMailboxes({
     authUser,
     maildirRoot,
+    unixUser: await resolveMailboxUnixUser(local, owner),
     useDoveadm,
   });
 

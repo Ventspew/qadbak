@@ -231,12 +231,50 @@ export async function writeVirtualDomainsFile(domains) {
   await exec("postmap", [QADBAK_POSTFIX_DOMAINS], { timeout: 30_000 });
 }
 
-export async function ensureMaildir(dir) {
+export async function ensureMaildir(dir, unixUser) {
+  const { mkdir } = await import("node:fs/promises");
   for (const sub of ["cur", "new", "tmp"]) {
-    const p = path.join(dir, sub);
-    const { mkdir } = await import("node:fs/promises");
-    await mkdir(p, { recursive: true });
+    await mkdir(path.join(dir, sub), { recursive: true });
   }
+  if (unixUser) await chownMaildirTree(dir, unixUser);
+}
+
+/**
+ * Only Maildir trees (INBOX or .Sent / .Drafts / …). Never /home/<domain-user>
+ * — extra mailboxes under homes/ keep their own UIDs.
+ */
+export function isSafeMaildirChownPath(dir) {
+  const d = path.resolve(String(dir || ""));
+  if (!d.startsWith("/home/")) return false;
+  const parts = d.split("/").filter(Boolean);
+  if (parts.length < 3) return false;
+  return parts.includes("Maildir");
+}
+
+/** chown a Maildir folder to the mailbox unix user (not the domain account home). */
+export async function chownMaildirTree(dir, unixUser) {
+  const u = String(unixUser || "").trim();
+  const d = path.resolve(String(dir || ""));
+  if (!u || !isSafeMaildirChownPath(d)) return;
+  const ids = await resolveUnixIds(u);
+  if (!ids) return;
+  let group = ids.gid;
+  try {
+    const { stdout } = await exec("id", ["-gn", u], { timeout: 5000 });
+    if (stdout.trim()) group = stdout.trim();
+  } catch {
+    /* numeric gid */
+  }
+  await exec("chown", ["-R", `${u}:${group}`, d], { timeout: 60_000 }).catch(() => {});
+  await exec("chmod", ["-R", "u+rwX,g+rwX", d], { timeout: 60_000 }).catch(() => {});
+}
+
+/** Unix account that Dovecot uses for this mailbox (local user if it exists). */
+export async function resolveMailboxUnixUser(localPart, owner) {
+  const local = String(localPart || "").trim();
+  const own = String(owner || "").trim();
+  if (local && (await resolveUnixIds(local))) return local;
+  return own;
 }
 
 /** uid/gid/home from /etc/passwd. */
