@@ -2,9 +2,9 @@
 
 # Qadbak
 
-### Self-hosted hosting control panel for Linux VPS.
+### Self-hosted control panel for Linux VPS hosting.
 
-Admin and client UI for domains, mail, DNS, TLS, databases, backups, and cron - on **your** server. Native **iOS app** for iPhone and iPad. Premium for resellers, webmail, and white-label.
+Manage domains, mail, DNS, TLS, databases, backups, and cron on your own server. Includes a native iOS app for iPhone and iPad. Optional Premium modules add reseller, webmail, and white-label features.
 
 [![License](https://img.shields.io/badge/License-Panel%20use%20only-blue.svg)](LICENSE)
 [![iOS app](https://img.shields.io/badge/iOS%20app-1.2.3-0A84FF?logo=apple&logoColor=white)](ios/README.md)
@@ -30,14 +30,9 @@ Admin and client UI for domains, mail, DNS, TLS, databases, backups, and cron - 
 
 ## What is Qadbak?
 
-Qadbak is a self-hosted hosting control panel. You install it on a fresh **Ubuntu or Debian** VPS,
-sign in, and manage every site, mailbox, DNS record and database from one English
-UI - with a clean split between administrators (who run the host) and clients
-(who only see their own domains).
+Qadbak is a self-hosted hosting control panel. Install it on a fresh **Ubuntu or Debian** VPS, sign in, and manage sites, mailboxes, DNS records, and databases from one UI. It separates administrator access from client access so each role sees only what it needs.
 
-It's the alternative for people who want **cPanel-class workflows** without
-cPanel's price tag, license server, or 2010 UI - plus a **native iOS app**
-that talks to the same panel over HTTPS.
+If you want a modern panel you can run yourself (with an optional native iOS app), Qadbak is built for that use case.
 
 ```bash
 git clone https://github.com/macdirtycow/qadbak.git /opt/qadbak
@@ -45,7 +40,7 @@ cd /opt/qadbak
 sudo bash install/qadbak-install.sh
 ```
 
-Three prompts to start (hostname, admin password, Let's Encrypt email) - then mail hostname, public IP, and optional Premium license and demo client. Post-install verification runs automatically.
+Setup asks for the hostname, admin password, and Let's Encrypt email first, then mail hostname, public IP, and optional Premium/demo settings. Post-install verification runs automatically.
 
 ## Features
 
@@ -169,7 +164,7 @@ Qmail, and live admin updates.
 
 > [Buy a license →](https://license.inveil.dev/buy) · [Check or refund an existing key →](https://license.inveil.dev) · [Refund policy](https://qadbak.com/refund)
 
-## Why Qadbak vs the classics?
+## Quick comparison
 
 |                                 | **Qadbak** | cPanel | Plesk | HestiaCP |
 |---------------------------------|:----------:|:------:|:-----:|:--------:|
